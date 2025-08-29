@@ -7,8 +7,8 @@ import requests
 import random
 
 # ✅ GitHub Secrets에서 API 키 불러오기
-ACCESS_KEY = os.getenv("COUPANG_ACCESS")
-SECRET_KEY = os.getenv("COUPANG_SECRET")
+ACCESS_KEY = os.getenv("ACCESS_KEY")
+SECRET_KEY = os.getenv("SECRET_KEY")
 
 DOMAIN = "https://api-gateway.coupang.com"
 

@@ -23,8 +23,8 @@ jobs:
       - name: Run script
         run: python fetch_products_seo.py
         env:
-          ACCESS_KEY: ${{ secrets.ACCESS_KEY }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          ACCESS_KEY: ${{ secrets.COUPANG_ACCESS }}
+          ACCESS_KEY: ${{ secrets.COUPANG_ACCESS }}
 
       - name: Commit and push changes
         run: |

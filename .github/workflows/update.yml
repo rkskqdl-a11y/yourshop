@@ -24,7 +24,7 @@ jobs:
         run: python fetch_products_seo.py
         env:
           ACCESS_KEY: ${{ secrets.COUPANG_ACCESS }}
-          ACCESS_KEY: ${{ secrets.COUPANG_ACCESS }}
+          SECRET_KEY: ${{ secrets.COUPANG_SECRET }}
 
       - name: Commit and push changes
         run: |

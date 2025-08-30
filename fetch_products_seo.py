@@ -46,44 +46,58 @@ SEARCH_KEYWORDS = [
     "자전거", "헬스 보충제", "캠핑 용품", "여행 가방", "패션 신발", "아동 장난감"
 ]
 
-def generate_hmac(method: str, path_with_query: str, secret_key: str, access_key: str) -> str:
+# 이미 맨 위에 있음: import urllib.parse, import requests, import time, hmac, hashlib, base64
+
+def generate_hmac(method: str, path_with_query: str, secret_key: str, access_key: str, dt: str | None = None) -> tuple[str, str]:
     """
-    path_with_query는 반드시 퍼센트 인코딩이 반영된 최종 문자열이어야 함.
-    예: /.../search?keyword=%EB%85%B8%ED%8A%B8%EB%B6%81&limit=50
+    path_with_query: 반드시 최종 인코딩이 반영된 문자열(예: /.../search?keyword=%EB...&limit=50)
+    dt: 서명 시각(YYMMDDTHHMMSS, UTC). None이면 지금 시각 사용.
+    return: (Authorization 헤더 값, dt)
     """
+    if dt is None:
+        dt = time.strftime("%y%m%dT%H%M%S", time.gmtime())
     path, query = (path_with_query.split("?", 1) + [""])[:2]
-    dt = time.strftime("%y%m%dT%H%M%S", time.gmtime())
     message = dt + method + path + query
     signature = hmac.new(secret_key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).digest()
     signed = base64.b64encode(signature).decode("utf-8")
-    return f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={dt}, signature={signed}"
+    auth = f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={dt}, signature={signed}"
+    return auth, dt
 
 
 def fetch_products(keyword: str):
-    # 1) 요청 파라미터 구성
-    params = {
-        "keyword": keyword,
-        "limit": 50,
-    }
-
-    # 2) urllib.parse.urlencode로 쿼리를 인코딩 → 이 인코딩된 쿼리로 서명
-    encoded_query = urllib.parse.urlencode(params, doseq=True)
+    """
+    1) requests.PreparedRequest 로 '진짜 전송될 URL'을 먼저 만든다.
+    2) 그 URL의 path+query를 그대로 서명에 사용한다.
+    3) 같은 요청(prepared request)에 Authorization 헤더를 주입해서 전송한다.
+    """
     path = "/v2/providers/affiliate_open_api/apis/openapi/v1/products/search"
-    path_with_query = f"{path}?{encoded_query}"
+    params = {"keyword": keyword, "limit": 50}
 
-    # 3) 동일한 path_with_query로 서명 생성
-    authorization = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY)
+    # 1) 최종 인코딩 포함 URL 생성
+    req = requests.Request("GET", DOMAIN + path, params=params)
+    prep = req.prepare()  # 여기서 최종 URL이 결정됨(인코딩/정렬 포함)
+    parsed = urllib.parse.urlsplit(prep.url)
+    path_with_query = parsed.path + (("?" + parsed.query) if parsed.query else "")
 
-    # 4) 실제 요청도 같은 params로 전송(서명과 완전히 동일하게)
-    headers = {
-        "Authorization": authorization,
-        "Content-Type": "application/json;charset=UTF-8",
-    }
+    # 2) 동일한 path_with_query로 서명
+    authorization, dt = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY)
+
+    # 3) 같은 prepared request에 헤더 주입 후 전송
+    prep.headers["Authorization"] = authorization
+    prep.headers["Content-Type"] = "application/json;charset=UTF-8"
+    # 선택: 참고용으로 날짜 헤더도 같이 보냄(서명에는 이미 포함됨)
+    prep.headers["X-Authorization-Date"] = dt
+
+    s = requests.Session()
+    resp = s.send(prep, timeout=10)
+
+    if DEBUG:
+        print(f"[REQ] keyword={keyword} url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
+        if resp.status_code >= 400:
+            # 본문 힌트(보안상 일부만): 쿠팡이 이유 메시지 내려줄 때가 있음
+            print("[BODY]", (resp.text or "")[:500])
+
     try:
-        resp = requests.get(DOMAIN + path, headers=headers, params=params, timeout=10)
-        if DEBUG:
-            # 실제 전송된 최종 URL 확인용
-            print(f"[REQ] keyword={keyword} url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
         resp.raise_for_status()
         data = resp.json()
         return data.get("data", {}).get("productData", []) or []

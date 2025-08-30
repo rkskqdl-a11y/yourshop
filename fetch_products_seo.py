@@ -60,87 +60,57 @@ SEARCH_KEYWORDS = [
 
 # 이미 맨 위에 있음: import urllib.parse, import requests, import time, hmac, hashlib, base64
 
-def generate_hmac(method: str, path_with_query: str, secret_key: str, access_key: str, dt: str) -> str:
+def generate_hmac(method: str, path_with_query: str, secret_key: str, access_key: str, dt: str | None = None) -> tuple[str, str]:
     """
-    dt: 날짜 문자열(이미 만들어진 값 사용)
-    path_with_query: '/.../path?key=val&...' 최종 문자열(쿼리 포함)
+    dt: yyMMddTHHmmssZ (예: 250830T130123Z). None이면 현재 UTC로 생성.
+    path_with_query: '/.../path?key=val&...' (도메인 제외, 최종 인코딩 문자열)
+    return: (Authorization 헤더 문자열, dt)
     """
+    if dt is None:
+        dt = time.strftime('%y%m%d', time.gmtime()) + 'T' + time.strftime('%H%M%S', time.gmtime()) + 'Z'
+
     path, query = (path_with_query.split("?", 1) + [""])[:2]
-    message = dt + method + path + query
-    signature = hmac.new(secret_key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).digest()
-    signed = base64.b64encode(signature).decode("utf-8")
-    return f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={dt}, signature={signed}"
+    message = dt + method + path + query  # 문서: datetime + method + path + query
+
+    # hexdigest로 서명(문서 방식)
+    signature = hmac.new(secret_key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    auth = f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={dt}, signature={signature}"
+    return auth, dt
 
 # === 상품 조회(멀티 포맷/서명쿼리 자동 시도 확장판) ===
 def fetch_products(keyword: str):
     path = "/v2/providers/affiliate_open_api/apis/openapi/v1/products/search"
-    params = [("keyword", keyword), ("limit", 50)]
+    params = {"keyword": keyword, "limit": 50}
 
-    # 날짜 포맷(서버 호환성 확보용)
-    dt_formats = [
-        lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),  # ISO8601
-        lambda: time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),      # 컴팩트(YYYY)
-        lambda: time.strftime("%y%m%dT%H%M%S", time.gmtime()),       # 컴팩트(yy)
-    ]
-    # 쿼리 인코딩 모드: False→RFC3986(%20), True→urlencode(+)
-    enc_flags = [False, True]
+    # 1) requests가 실제로 전송할 최종 URL 만들기(인코딩/정렬 확정)
+    req = requests.Request("GET", DOMAIN + path, params=params)
+    prep = req.prepare()  # 최종 URL 생성
+    parsed = urllib.parse.urlsplit(prep.url)
+    path_with_query = parsed.path + (("?" + parsed.query) if parsed.query else "")
 
-    # 서명에 사용할 쿼리 문자열 버전: 인코딩 그대로 vs 디코딩(한글/공백 복원)
-    def _sign_variants(encoded_query: str):
-        decoded_query = urllib.parse.unquote_plus(encoded_query)
-        return [
-            ("encoded", encoded_query),
-            ("decoded", decoded_query),
-        ]
+    # 2) 동일한 path_with_query + 2자리년도+Z 날짜로 hexdigest 서명
+    authorization, dt = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY, None)
 
-    last_err = None
-    for dt_fn in dt_formats:
-        dt = dt_fn()
-        for space_plus in enc_flags:
-            # 요청에 실제로 사용할 쿼리(다시 인코딩되지 않도록 full_url로 사용)
-            encoded_query = _build_query(params, space_plus=space_plus)
-            path_with_query_encoded = f"{path}?{encoded_query}"
-            full_url = f"{DOMAIN}{path_with_query_encoded}"
+    # 3) 같은 prepared 요청에 헤더 주입 후 전송
+    prep.headers["Authorization"] = authorization
+    prep.headers["Content-Type"] = "application/json;charset=UTF-8"
 
-            # 서명에 사용할 쿼리 문자열 버전 2종 시도
-            for sign_mode, sign_query in _sign_variants(encoded_query):
-                path_with_query_for_sign = f"{path}?{sign_query}"
+    s = requests.Session()
+    resp = s.send(prep, timeout=10)
 
-                # generate_hmac은 dt를 인자로 받는 현재 버전 사용
-                auth = generate_hmac("GET", path_with_query_for_sign, SECRET_KEY, ACCESS_KEY, dt)
-                headers = {
-                    "Authorization": auth,
-                    "Content-Type": "application/json;charset=UTF-8",
-                    "X-Authorization-Date": dt,  # 참고용
-                }
+    if DEBUG:
+        print(f"[REQ] url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
+        if resp.status_code >= 400:
+            print("[BODY]", (resp.text or "")[:500])
 
-                # 요청은 우리가 만든 full_url 그대로(재인코딩 방지)
-                resp = requests.get(full_url, headers=headers, timeout=10)
-
-                if 'DEBUG' in globals() and DEBUG:
-                    enc_mode = "plus" if space_plus else "rfc3986"
-                    print(f"[TRY] dt={dt} enc={enc_mode} sign={sign_mode} url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
-                    # 서명에 실제로 쓴 문자열도 그대로 출력(진단용)
-                    sign_query_str = sign_query
-                    sign_msg = dt + "GET" + path + (sign_query_str if sign_query_str else "")
-                    print(f"[SIGN-STRING] message='{sign_msg}'")
-                    if resp.status_code >= 400:
-                        print("[BODY]", (resp.text or "")[:300])
-                    else:
-                        print("[OK] matched: dt=", dt, " enc=", enc_mode, " sign=", sign_mode)
-
-                if resp.status_code == 200:
-                    try:
-                        data = resp.json()
-                        return data.get("data", {}).get("productData", []) or []
-                    except Exception as e:
-                        last_err = e
-                        break
-                else:
-                    last_err = resp.text
-
-    print(f"[WARN] all signature attempts failed. last_err={str(last_err)[:200]}")
-    return []
+    try:
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", {}).get("productData", []) or []
+    except Exception as e:
+        print(f"[WARN] fetch_products fail keyword={keyword} err={e}")
+        return []
 def fetch_random_products():
     all_products = []
     for kw in SEARCH_KEYWORDS:

@@ -50,15 +50,15 @@ SEARCH_KEYWORDS = [
 
 def generate_hmac(method, path_with_query, secret_key, access_key, dt=None):
     """
-    ISO8601 UTC(YYYY-MM-DDTHH:MM:SSZ) 타임스탬프로 서명.
-    path_with_query: 최종 인코딩이 반영된 '/.../path?key=val&...' 문자열(PreparedRequest에서 추출)
-    return: (Authorization 헤더 문자열, signed-date 문자열)
+    ISO8601 UTC(YYYY-MM-DDTHH:MM:SSZ) 타임스탬프 사용.
+    path_with_query: '/.../path?key=val&...' 최종 인코딩 문자열(우리가 직접 만든 쿼리)
+    return: (Authorization 헤더, signed-date)
     """
     if dt is None:
-        dt = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())  # ISO8601 UTC
+        dt = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     path, query = (path_with_query.split("?", 1) + [""])[:2]
-    message = dt + method + path + query  # Coupang Open API 서명 포맷
+    message = dt + method + path + query
 
     signature = hmac.new(
         secret_key.encode("utf-8"),
@@ -79,35 +79,37 @@ def generate_hmac(method, path_with_query, secret_key, access_key, dt=None):
 
 def fetch_products(keyword: str):
     """
-    1) requests.PreparedRequest로 '실제 전송될 URL' 생성
-    2) 그 URL의 path+query로 서명
-    3) 같은 PreparedRequest에 Authorization 헤더 주입 후 전송
+    1) 쿼리 문자열을 RFC3986 방식으로 직접 인코딩(공백=%20)
+    2) 그 '동일 문자열'로 서명
+    3) requests에 그 URL을 그대로 넣어 전송(재인코딩 방지)
     """
     path = "/v2/providers/affiliate_open_api/apis/openapi/v1/products/search"
-    params = {"keyword": keyword, "limit": 50}
+    # 1) 수동 인코딩(공백= %20, 안전문자만 남기기)
+    def enc(v: str) -> str:
+        return urllib.parse.quote(str(v), safe="-_.~")  # 공백 → %20
 
-    # 1) 최종 URL 준비(인코딩/파라미터 정렬까지 확정)
-    req = requests.Request("GET", DOMAIN + path, params=params)
-    prep = req.prepare()
-    parsed = urllib.parse.urlsplit(prep.url)
-    path_with_query = parsed.path + (("?" + parsed.query) if parsed.query else "")
+    params = [("keyword", keyword), ("limit", 50)]
+    encoded_query = "&".join(f"{enc(k)}={enc(v)}" for k, v in params)
+    path_with_query = f"{path}?{encoded_query}"
+    full_url = f"{DOMAIN}{path_with_query}"
 
-    # 2) 동일한 path_with_query로 서명 생성(ISO8601)
+    # 2) 동일 문자열로 서명
     authorization, dt = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY)
 
-    # 3) 같은 요청에 헤더 주입 후 전송
-    prep.headers["Authorization"] = authorization
-    prep.headers["Content-Type"] = "application/json;charset=UTF-8"
-    # 선택: 참고용(서명에는 이미 포함됨)
-    prep.headers["X-Authorization-Date"] = dt
+    # 3) 같은 URL로 그대로 요청(파라미터를 params=로 주지 말 것 → 재인코딩 방지)
+    headers = {
+        "Authorization": authorization,
+        "Content-Type": "application/json;charset=UTF-8",
+        "X-Authorization-Date": dt,  # 참고용
+    }
+    resp = requests.get(full_url, headers=headers, timeout=10)
 
-    s = requests.Session()
-    resp = s.send(prep, timeout=10)
-
-    if 'DEBUG' in globals() and DEBUG:
+    if DEBUG:
         print(f"[REQ] keyword={keyword} url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
         if resp.status_code >= 400:
             print("[BODY]", (resp.text or "")[:500])
+        # 서명에 쓴 문자열도 같이 찍어두면 비교가 쉬움
+        print("[SIGN] method=GET path_with_query=", path_with_query)
 
     try:
         resp.raise_for_status()

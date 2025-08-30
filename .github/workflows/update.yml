@@ -38,17 +38,17 @@ jobs:
           ls -la
 
       - name: Run script
-  env:
-    ACCESS_KEY: ${{ secrets.COUPANG_ACCESS }}
-    SECRET_KEY: ${{ secrets.COUPANG_SECRET }}
-    COUNT: "30"
-    DEBUG_LOG: "1"
-    PYTHONUNBUFFERED: "1"
-  run: |
-    set -euxo pipefail
-    echo "[RUN] fetch_products_seo.py"
-    python -u fetch_products_seo.py
-    echo "[DONE] fetch_products_seo.py"
+        env:
+          ACCESS_KEY: ${{ secrets.COUPANG_ACCESS }}
+          SECRET_KEY: ${{ secrets.COUPANG_SECRET }}
+          COUNT: "30"
+          DEBUG_LOG: "1"
+          PYTHONUNBUFFERED: "1"
+       run: |
+         set -euxo pipefail
+         echo "[RUN] fetch_products_seo.py"
+         python -u fetch_products_seo.py
+         echo "[DONE] fetch_products_seo.py"
 
       - name: Show git changes
         run: |

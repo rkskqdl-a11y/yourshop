@@ -224,22 +224,34 @@ def build_html(products):
     <div class="grid">
 """
     for p in products:
-      name = (p.get("productName") or p.get("title") or "")[:60]
-      desc = (p.get("productName") or p.get("title") or "")[:120]
-      price = p.get("productPrice") or p.get("price") or ""
-      img = p.get("imageUrl") or p.get("image") or ""
-      link = p.get("productUrl") or p.get("link") or "#"
+    name = (p.get("productName") or p.get("title") or "")[:60]
+    desc = (p.get("productName") or p.get("title") or "")[:120]
+    price = p.get("productPrice") or p.get("price") or ""
+    # 이미지 우선순위: imageUrl → productImage → image
+    img = p.get("imageUrl") or p.get("productImage") or p.get("image") or ""
+    link = p.get("productUrl") or p.get("link") or "#"
 
-      html += f"""
-      <article itemscope itemtype="https://schema.org/Product">
-        <h2 itemprop="name">{name}...</h2>
-        <img src="{img}" alt="{name}" itemprop="image">
-        <p class="price"><span itemprop="price">{price}</span>원</p>
-        <a class="btn" href="{link}" target="_blank" rel="nofollow noopener" itemprop="url">👉 보러가기</a>
-        <meta itemprop="brand" content="쿠팡">
-        <meta itemprop="description" content="{desc}">
-      </article>
-      """
+    # 이미지 URL 보정: // 또는 http → https
+    if img.startswith("//"):
+        img = "https:" + img
+    elif img.startswith("http:"):
+        img = "https:" + img[5:]
+
+    # 이미지 값 없으면 플레이스홀더
+    if not img:
+        img = "https://via.placeholder.com/600x400?text=No+Image"
+
+    html += f"""
+    <article itemscope itemtype="https://schema.org/Product">
+      <h2 itemprop="name">{name}...</h2>
+      <img src="{img}" alt="{name}" itemprop="image"
+           loading="lazy" referrerpolicy="no-referrer">
+      <p class="price"><span itemprop="price">{price}</span>원</p>
+      <a class="btn" href="{link}" target="_blank" rel="nofollow noopener" itemprop="url">👉 보러가기</a>
+      <meta itemprop="brand" content="쿠팡">
+      <meta itemprop="description" content="{desc}">
+    </article>
+    """
     html += """
     </div>
 </body>

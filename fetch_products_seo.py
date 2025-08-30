@@ -109,6 +109,8 @@ def fetch_products(keyword: str):
 
     try:
         resp.raise_for_status()
+        txt = resp.text or ""
+        if DEBUG: print("[BODYFULL]", txt[:2000])
         j = resp.json()
     except Exception as e:
         print("[WARN] json parse fail:", e)

@@ -31,6 +31,10 @@ jobs:
       - name: Install dependencies
         run: pip install -U pip requests beautifulsoup4 lxml
 
+      # 파이썬 문법 오류를 먼저 잡아주는 단계(강추)
+      - name: Syntax check
+        run: python -m py_compile fetch_products_seo.py
+
       - name: Debug env
         run: |
           python -V

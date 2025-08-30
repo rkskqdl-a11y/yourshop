@@ -9,6 +9,18 @@ import random
 import pathlib
 import urllib.parse
 
+# === 헬퍼: 인코딩 ===
+def _enc_rfc3986(v: str) -> str:
+    # 공백 → %20, 안전문자만 허용(RFC3986)
+    return urllib.parse.quote(str(v), safe="-_.~")
+
+def _build_query(params, space_plus=False) -> str:
+    # space_plus=True → urllib 표준(+)
+    # space_plus=False → RFC3986(%20)
+    if space_plus:
+        return urllib.parse.urlencode(params, doseq=True)
+    return "&".join(f"{_enc_rfc3986(k)}={_enc_rfc3986(v)}" for k, v in params)
+    
 # 1) 환경변수(시크릿) 먼저 로드
 ACCESS_KEY = os.getenv("ACCESS_KEY")
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -48,76 +60,68 @@ SEARCH_KEYWORDS = [
 
 # 이미 맨 위에 있음: import urllib.parse, import requests, import time, hmac, hashlib, base64
 
-def generate_hmac(method, path_with_query, secret_key, access_key, dt=None):
+def generate_hmac(method: str, path_with_query: str, secret_key: str, access_key: str, dt: str) -> str:
     """
-    ISO8601 UTC(YYYY-MM-DDTHH:MM:SSZ) 타임스탬프 사용.
-    path_with_query: '/.../path?key=val&...' 최종 인코딩 문자열(우리가 직접 만든 쿼리)
-    return: (Authorization 헤더, signed-date)
+    dt: 날짜 문자열(이미 만들어진 값 사용)
+    path_with_query: '/.../path?key=val&...' 최종 문자열(쿼리 포함)
     """
-    if dt is None:
-        dt = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
     path, query = (path_with_query.split("?", 1) + [""])[:2]
     message = dt + method + path + query
-
-    signature = hmac.new(
-        secret_key.encode("utf-8"),
-        message.encode("utf-8"),
-        hashlib.sha256
-    ).digest()
+    signature = hmac.new(secret_key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).digest()
     signed = base64.b64encode(signature).decode("utf-8")
+    return f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={dt}, signature={signed}"
 
-    auth = (
-        "CEA "
-        f"algorithm=HmacSHA256, "
-        f"access-key={access_key}, "
-        f"signed-date={dt}, "
-        f"signature={signed}"
-    )
-    return auth, dt
-
-
+# === 상품 조회(멀티 포맷 자동 시도) ===
 def fetch_products(keyword: str):
-    """
-    1) 쿼리 문자열을 RFC3986 방식으로 직접 인코딩(공백=%20)
-    2) 그 '동일 문자열'로 서명
-    3) requests에 그 URL을 그대로 넣어 전송(재인코딩 방지)
-    """
     path = "/v2/providers/affiliate_open_api/apis/openapi/v1/products/search"
-    # 1) 수동 인코딩(공백= %20, 안전문자만 남기기)
-    def enc(v: str) -> str:
-        return urllib.parse.quote(str(v), safe="-_.~")  # 공백 → %20
-
     params = [("keyword", keyword), ("limit", 50)]
-    encoded_query = "&".join(f"{enc(k)}={enc(v)}" for k, v in params)
-    path_with_query = f"{path}?{encoded_query}"
-    full_url = f"{DOMAIN}{path_with_query}"
 
-    # 2) 동일 문자열로 서명
-    authorization, dt = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY)
+    # 시도할 조합(상대가 뭘 기대하든 자동으로 맞추기)
+    # 1) ISO8601 + RFC3986(%20)
+    # 2) yyyymmddTHHMMSSZ + RFC3986(%20)
+    # 3) yyyymmddTHHMMSSZ + urlencoded(+)
+    attempts = [
+        (lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), False),
+        (lambda: time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()), False),
+        (lambda: time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()), True),
+    ]
 
-    # 3) 같은 URL로 그대로 요청(파라미터를 params=로 주지 말 것 → 재인코딩 방지)
-    headers = {
-        "Authorization": authorization,
-        "Content-Type": "application/json;charset=UTF-8",
-        "X-Authorization-Date": dt,  # 참고용
-    }
-    resp = requests.get(full_url, headers=headers, timeout=10)
+    last_err = None
+    for dt_func, space_plus in attempts:
+        dt = dt_func()
+        q = _build_query(params, space_plus=space_plus)
+        path_with_query = f"{path}?{q}"
+        url = f"{DOMAIN}{path_with_query}"
 
-    if DEBUG:
-        print(f"[REQ] keyword={keyword} url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
-        if resp.status_code >= 400:
-            print("[BODY]", (resp.text or "")[:500])
-        # 서명에 쓴 문자열도 같이 찍어두면 비교가 쉬움
-        print("[SIGN] method=GET path_with_query=", path_with_query)
+        auth = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY, dt)
+        headers = {
+            "Authorization": auth,
+            "Content-Type": "application/json;charset=UTF-8",
+            "X-Authorization-Date": dt,  # 참고용
+        }
 
-    try:
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("data", {}).get("productData", []) or []
-    except Exception as e:
-        print(f"[WARN] fetch_products fail keyword={keyword} err={e}")
-        return []
+        resp = requests.get(url, headers=headers, timeout=10)
+
+        if 'DEBUG' in globals() and DEBUG:
+            enc_mode = "plus" if space_plus else "rfc3986"
+            print(f"[TRY] dt={dt} enc={enc_mode} url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
+            if resp.status_code >= 400:
+                print("[BODY]", (resp.text or "")[:300])
+            else:
+                print("[OK] matched: dt=", dt, " enc=", enc_mode)
+
+        if resp.status_code == 200:
+            try:
+                data = resp.json()
+            except Exception as e:
+                last_err = e
+                break
+            return data.get("data", {}).get("productData", []) or []
+        else:
+            last_err = resp.text
+
+    print(f"[WARN] all signature attempts failed. last_err={str(last_err)[:200]}")
+    return []
 
 def fetch_random_products():
     all_products = []

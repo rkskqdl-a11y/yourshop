@@ -80,19 +80,22 @@ def generate_hmac(method: str, path_with_query: str, secret_key: str, access_key
 
 # === 상품 조회(멀티 포맷/서명쿼리 자동 시도 확장판) ===
 def fetch_products(keyword: str):
+    """
+    1) PreparedRequest로 최종 URL 생성(우리가 이미 인증은 OK)
+    2) hexdigest + yyMMddTHHmmssZ 포맷으로 서명
+    3) 응답 JSON에서 리스트를 안전하게 찾아 정규화해서 반환
+    """
     path = "/v2/providers/affiliate_open_api/apis/openapi/v1/products/search"
     params = {"keyword": keyword, "limit": 50}
 
-    # 1) requests가 실제로 전송할 최종 URL 만들기(인코딩/정렬 확정)
+    # 최종 URL
     req = requests.Request("GET", DOMAIN + path, params=params)
-    prep = req.prepare()  # 최종 URL 생성
+    prep = req.prepare()
     parsed = urllib.parse.urlsplit(prep.url)
     path_with_query = parsed.path + (("?" + parsed.query) if parsed.query else "")
 
-    # 2) 동일한 path_with_query + 2자리년도+Z 날짜로 hexdigest 서명
+    # 쿠팡 문서 포맷(hexdigest + yyMMddTHHmmssZ)
     authorization, dt = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY, None)
-
-    # 3) 같은 prepared 요청에 헤더 주입 후 전송
     prep.headers["Authorization"] = authorization
     prep.headers["Content-Type"] = "application/json;charset=UTF-8"
 
@@ -102,15 +105,82 @@ def fetch_products(keyword: str):
     if DEBUG:
         print(f"[REQ] url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
         if resp.status_code >= 400:
-            print("[BODY]", (resp.text or "")[:500])
+            print("[BODY]", (resp.text or "")[:800])
 
     try:
         resp.raise_for_status()
-        data = resp.json()
-        return data.get("data", {}).get("productData", []) or []
+        j = resp.json()
     except Exception as e:
-        print(f"[WARN] fetch_products fail keyword={keyword} err={e}")
+        print("[WARN] json parse fail:", e)
         return []
+
+    # 1) data 노드 분리(없으면 빈 dict)
+    d = j.get("data") if isinstance(j, dict) else {}
+    if d is None:
+        d = {}
+
+    # 2) 제품 리스트가 있을 법한 경로들을 차례로 검사
+    candidates = None
+    candidate_paths = [
+        ("productData",),           # 문서 예시
+        ("products",),              # 변형 케이스
+        ("content",),               # 간혹 컨텐츠 배열로 올 때
+        ("productList",),           # 다른 응답군
+        (),                         # data 자체가 리스트인 경우
+    ]
+
+    for path_tuple in candidate_paths:
+        node = d
+        if path_tuple:  # dict 안을 내려감
+            for k in path_tuple:
+                if isinstance(node, dict):
+                    node = node.get(k)
+                else:
+                    node = None
+                    break
+        # 빈 튜플이면 data 자체 검사
+        else:
+            node = d
+
+        if isinstance(node, list) and len(node) > 0:
+            candidates = node
+            break
+
+    # 3) 혹시 data 바깥 최상위에 리스트가 오는 케이스
+    if not candidates and isinstance(j, dict):
+        for k in ("productData", "products", "content", "productList"):
+            node = j.get(k)
+            if isinstance(node, list) and len(node) > 0:
+                candidates = node
+                break
+
+    if not candidates:
+        # 디버그용으로 키 보여주기
+        if DEBUG and isinstance(d, dict):
+            print("[INFO] data keys:", list(d.keys()))
+        return []
+
+    # 4) 필드명 정규화(템플릿에서 쓰는 키로 변환)
+    def norm(p: dict) -> dict:
+        title = p.get("productName") or p.get("title") or ""
+        price = p.get("productPrice") or p.get("price") or p.get("lowestPrice") or ""
+        img   = p.get("imageUrl") or p.get("image") or ""
+        link  = p.get("productUrl") or p.get("link") or ""
+        return {
+            "productName": title,
+            "productPrice": price,
+            "imageUrl": img,
+            "productUrl": link
+        }
+
+    items = [norm(x) for x in candidates if isinstance(x, dict)]
+
+    if DEBUG:
+        print("PARSED_COUNT=", len(items))
+        if items:
+            print("FIRST_ITEM_SAMPLE=", {k: items[0].get(k) for k in ("productName", "productPrice", "imageUrl", "productUrl")})
+
+    return items
 def fetch_random_products():
     all_products = []
     for kw in SEARCH_KEYWORDS:

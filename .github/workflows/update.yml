@@ -2,41 +2,63 @@ name: Update Coupang Products
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # 매일 00:00 UTC 실행 (한국은 오전 9시)
-  workflow_dispatch:       # 필요시 수동 실행 가능
+    - cron: "0 0 * * *"   # 매일 00:00 UTC (KST 09:00)
+  workflow_dispatch:       # 필요 시 수동 실행
+
+# 액션이 리포에 푸시할 수 있게 권한 부여
+permissions:
+  contents: write
+
+# 같은 워크플로 중복 실행 시 이전 실행 취소
+concurrency:
+  group: update-products
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}     # 기본 토큰 사용
+          persist-credentials: true              # 자격증명 유지
+          fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4 lxml
+        run: pip install -U pip requests beautifulsoup4 lxml
 
       - name: Run script
         run: python -u fetch_products_seo.py
         env:
-          ACCESS_KEY: ${{ secrets.ACCESS_KEY }}    # ← GitHub Secrets 참조
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}    # ← GitHub Secrets 참조
-          COUNT: "30"         # 원하면 업로드 개수 제어
-          DEBUG_LOG: "1"
-    
-      - name: Commit and push changes
+          ACCESS_KEY: ${{ secrets.ACCESS_KEY }}  # GitHub Secrets
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}  # GitHub Secrets
+          COUNT: "30"                            # 업로드 개수 컨트롤 (원하면 값 변경)
+          DEBUG_LOG: "1"                         # 디버그 출력 ON
+
+      - name: Show git changes
         run: |
-          set -e
-          git config --local user.email "actions@github.com"
-          git config --local user.name "github-actions"
           echo "== git status =="
           git status --porcelain || true
           echo "== changed files =="
-          git diff --name-only | sed -n '1,100p' || true
-          git add index.html sitemap.xml robots.txt || true
-          git commit -m "Auto-update products" || echo "No changes to commit"
-          git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/rkskqdl-a11y/yourshop.git HEAD:main
+          git diff --name-only | sed -n '1,200p' || true
+
+      - name: Commit and push changes
+        run: |
+          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+
+          # 변경 없으면 커밋/푸시 스킵
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git add index.html sitemap.xml robots.txt
+          git commit -m "Auto-update products"
+          git push origin HEAD:main

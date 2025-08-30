@@ -2,14 +2,12 @@ name: Update Coupang Products
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # 매일 00:00 UTC (KST 09:00)
-  workflow_dispatch:       # 필요 시 수동 실행
+    - cron: "0 0 * * *"   # KST 09:00
+  workflow_dispatch:
 
-# 액션이 리포에 푸시할 수 있게 권한 부여
 permissions:
   contents: write
 
-# 같은 워크플로 중복 실행 시 이전 실행 취소
 concurrency:
   group: update-products
   cancel-in-progress: true
@@ -21,8 +19,8 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}     # 기본 토큰 사용
-          persist-credentials: true              # 자격증명 유지
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
           fetch-depth: 0
 
       - name: Set up Python
@@ -33,13 +31,24 @@ jobs:
       - name: Install dependencies
         run: pip install -U pip requests beautifulsoup4 lxml
 
+      - name: Debug env
+        run: |
+          python -V
+          pwd
+          ls -la
+
       - name: Run script
-        run: python -u fetch_products_seo.py
         env:
-          ACCESS_KEY: ${{ secrets.ACCESS_KEY }}  # GitHub Secrets
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}  # GitHub Secrets
-          COUNT: "30"                            # 업로드 개수 컨트롤 (원하면 값 변경)
-          DEBUG_LOG: "1"                         # 디버그 출력 ON
+          ACCESS_KEY: ${{ secrets.ACCESS_KEY }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          COUNT: "30"
+          DEBUG_LOG: "1"
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euxo pipefail
+          echo "[RUN] fetch_products_seo.py"
+          python -u fetch_products_seo.py
+          echo "[DONE] fetch_products_seo.py"
 
       - name: Show git changes
         run: |
@@ -53,7 +62,6 @@ jobs:
           git config user.email "actions@github.com"
           git config user.name "github-actions[bot]"
 
-          # 변경 없으면 커밋/푸시 스킵
           if git diff --quiet; then
             echo "No changes to commit"
             exit 0

@@ -7,6 +7,8 @@ import base64
 import requests
 import random
 import pathlib
+import urllib.parse
+
 
 # ===== [디버그: 실행 환경 출력] =====
 print("== DEBUG START ==")
@@ -35,24 +37,44 @@ SEARCH_KEYWORDS = [
     "자전거", "헬스 보충제", "캠핑 용품", "여행 가방", "패션 신발", "아동 장난감"
 ]
 
-def generate_hmac(method, url, secret_key, access_key):
-    path, query = (url.split("?", 1) + [""])[:2]
-    datetime = time.strftime("%y%m%dT%H%M%S", time.gmtime())
-    message = datetime + method + path + query
+def generate_hmac(method: str, path_with_query: str, secret_key: str, access_key: str) -> str:
+    """
+    path_with_query는 반드시 퍼센트 인코딩이 반영된 최종 문자열이어야 함.
+    예: /.../search?keyword=%EB%85%B8%ED%8A%B8%EB%B6%81&limit=50
+    """
+    path, query = (path_with_query.split("?", 1) + [""])[:2]
+    dt = time.strftime("%y%m%dT%H%M%S", time.gmtime())
+    message = dt + method + path + query
     signature = hmac.new(secret_key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).digest()
     signed = base64.b64encode(signature).decode("utf-8")
-    return f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={datetime}, signature={signed}"
+    return f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={dt}, signature={signed}"
 
-def fetch_products(keyword):
-    url = f"/v2/providers/affiliate_open_api/apis/openapi/v1/products/search?keyword={keyword}&limit=50"
+
+def fetch_products(keyword: str):
+    # 1) 요청 파라미터 구성
+    params = {
+        "keyword": keyword,
+        "limit": 50,
+    }
+
+    # 2) urllib.parse.urlencode로 쿼리를 인코딩 → 이 인코딩된 쿼리로 서명
+    encoded_query = urllib.parse.urlencode(params, doseq=True)
+    path = "/v2/providers/affiliate_open_api/apis/openapi/v1/products/search"
+    path_with_query = f"{path}?{encoded_query}"
+
+    # 3) 동일한 path_with_query로 서명 생성
+    authorization = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY)
+
+    # 4) 실제 요청도 같은 params로 전송(서명과 완전히 동일하게)
     headers = {
-        "Authorization": generate_hmac("GET", url, SECRET_KEY, ACCESS_KEY),
+        "Authorization": authorization,
         "Content-Type": "application/json;charset=UTF-8",
     }
     try:
-        resp = requests.get(DOMAIN + url, headers=headers, timeout=10)
+        resp = requests.get(DOMAIN + path, headers=headers, params=params, timeout=10)
         if DEBUG:
-            print(f"[REQ] keyword={keyword} status={resp.status_code} len={len(resp.content)}")
+            # 실제 전송된 최종 URL 확인용
+            print(f"[REQ] keyword={keyword} url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
         resp.raise_for_status()
         data = resp.json()
         return data.get("data", {}).get("productData", []) or []

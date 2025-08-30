@@ -92,7 +92,7 @@ def fetch_products(keyword: str):
         # 서명(yyMMddTHHmmssZ + hexdigest)
         authorization, _ = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY, None)
         prep.headers["Authorization"] = authorization
-        prep.headers["Content-Type"] = "application/json;charset=UTF-8"]
+        prep.headers["Content-Type"] = "application/json;charset=UTF-8"
         s = requests.Session()
         resp = s.send(prep, timeout=10)
         if DEBUG:
@@ -109,7 +109,7 @@ def fetch_products(keyword: str):
     except Exception:
         j = {}
 
-    if isinstance(j, dict) and (j.get("rCode") == "400" or j.get("code") == "ERROR") and "limit is out of range" in (j.get("rMessage","") + j.get("message","")):
+    if isinstance(j, dict) and (j.get("rCode") == "400" or j.get("code") == "ERROR") and "limit is out of range" in (str(j.get("rMessage","")) + str(j.get("message",""))):
         if DEBUG:
             print("[INFO] retry with smaller limit=10")
         resp = do_request(10)
@@ -118,23 +118,24 @@ def fetch_products(keyword: str):
         except Exception:
             j = {}
 
-    # 성공 여부/파싱
+    # HTTP 성공 여부
     try:
         resp.raise_for_status()
     except Exception as e:
         print("[WARN] HTTP error:", e)
         return []
 
-    # rCode/rMessage 검사
+    # API 성공 코드 확인
     if isinstance(j, dict):
         rcode = j.get("rCode") or j.get("code")
         if rcode and str(rcode).upper() not in ("0", "SUCCESS"):
             print("[INFO] API not success:", rcode, j.get("rMessage") or j.get("message"))
             return []
 
+    # 데이터 추출
     data_node = j.get("data") if isinstance(j, dict) else None
-    # 케이스별로 리스트 찾기
     candidates = None
+
     if isinstance(data_node, list):
         candidates = data_node
     elif isinstance(data_node, dict):
@@ -143,15 +144,20 @@ def fetch_products(keyword: str):
             if isinstance(v, list) and v:
                 candidates = v
                 break
+
     if not candidates and isinstance(j, dict):
         for k in ("productData", "products", "content", "productList", "items"):
             v = j.get(k)
             if isinstance(v, list) and v:
                 candidates = v
                 break
+
     if not candidates:
         if DEBUG:
-            print("[INFO] no candidates; data keys:", list(data_node.keys()) if isinstance(data_node, dict) else type(data_node).__name__)
+            if isinstance(data_node, dict):
+                print("[INFO] no candidates; data keys:", list(data_node.keys()))
+            else:
+                print("[INFO] data is:", type(data_node).__name__)
         return []
 
     # 정규화
@@ -162,7 +168,9 @@ def fetch_products(keyword: str):
             "imageUrl":     p.get("imageUrl") or p.get("image") or "",
             "productUrl":   p.get("productUrl") or p.get("link") or ""
         }
+
     items = [norm(x) for x in candidates if isinstance(x, dict)]
+
     if DEBUG:
         print("PARSED_COUNT=", len(items))
         if items:

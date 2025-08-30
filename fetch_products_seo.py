@@ -9,7 +9,16 @@ import random
 import pathlib
 import urllib.parse
 
+# 1) 환경변수(시크릿) 먼저 로드
+ACCESS_KEY = os.getenv("ACCESS_KEY")
+SECRET_KEY = os.getenv("SECRET_KEY")
 
+# 2) 마스킹 함수 + 키 존재/길이 로그
+def _mask(v):
+    return "(none)" if not v else f"len={len(v)} head={v[:3]}***"
+
+print("ACCESS_KEY_PRESENT=", "YES" if ACCESS_KEY else "NO", _mask(ACCESS_KEY))
+print("SECRET_KEY_PRESENT=", "YES" if SECRET_KEY else "NO", _mask(SECRET_KEY))
 # ===== [디버그: 실행 환경 출력] =====
 print("== DEBUG START ==")
 print("PYTHON_VERSION=", sys.version)

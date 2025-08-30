@@ -80,108 +80,93 @@ def generate_hmac(method: str, path_with_query: str, secret_key: str, access_key
 
 # === 상품 조회(멀티 포맷/서명쿼리 자동 시도 확장판) ===
 def fetch_products(keyword: str):
-    """
-    1) PreparedRequest로 최종 URL 생성(우리가 이미 인증은 OK)
-    2) hexdigest + yyMMddTHHmmssZ 포맷으로 서명
-    3) 응답 JSON에서 리스트를 안전하게 찾아 정규화해서 반환
-    """
     path = "/v2/providers/affiliate_open_api/apis/openapi/v1/products/search"
-    params = {"keyword": keyword, "limit": 50}
 
-    # 최종 URL
-    req = requests.Request("GET", DOMAIN + path, params=params)
-    prep = req.prepare()
-    parsed = urllib.parse.urlsplit(prep.url)
-    path_with_query = parsed.path + (("?" + parsed.query) if parsed.query else "")
+    def do_request(limit_val: int):
+        params = {"keyword": keyword, "limit": limit_val}
+        # 최종 URL 준비(PreparedRequest)
+        req = requests.Request("GET", DOMAIN + path, params=params)
+        prep = req.prepare()
+        parsed = urllib.parse.urlsplit(prep.url)
+        path_with_query = parsed.path + (("?" + parsed.query) if parsed.query else "")
+        # 서명(yyMMddTHHmmssZ + hexdigest)
+        authorization, _ = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY, None)
+        prep.headers["Authorization"] = authorization
+        prep.headers["Content-Type"] = "application/json;charset=UTF-8"]
+        s = requests.Session()
+        resp = s.send(prep, timeout=10)
+        if DEBUG:
+            print(f"[REQ] url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
+            print("[BODYFULL]", (resp.text or "")[:2000])
+        return resp
 
-    # 쿠팡 문서 포맷(hexdigest + yyMMddTHHmmssZ)
-    authorization, dt = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY, None)
-    prep.headers["Authorization"] = authorization
-    prep.headers["Content-Type"] = "application/json;charset=UTF-8"
+    # 1차: 20으로 시도
+    resp = do_request(20)
 
-    s = requests.Session()
-    resp = s.send(prep, timeout=10)
+    # 에러이면 limit 축소 재시도
+    try:
+        j = resp.json()
+    except Exception:
+        j = {}
 
-    if DEBUG:
-        print(f"[REQ] url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
-        if resp.status_code >= 400:
-            print("[BODY]", (resp.text or "")[:800])
+    if isinstance(j, dict) and (j.get("rCode") == "400" or j.get("code") == "ERROR") and "limit is out of range" in (j.get("rMessage","") + j.get("message","")):
+        if DEBUG:
+            print("[INFO] retry with smaller limit=10")
+        resp = do_request(10)
+        try:
+            j = resp.json()
+        except Exception:
+            j = {}
 
+    # 성공 여부/파싱
     try:
         resp.raise_for_status()
-        txt = resp.text or ""
-        if DEBUG: print("[BODYFULL]", txt[:2000])
-        j = resp.json()
     except Exception as e:
-        print("[WARN] json parse fail:", e)
+        print("[WARN] HTTP error:", e)
         return []
 
-    # 1) data 노드 분리(없으면 빈 dict)
-    d = j.get("data") if isinstance(j, dict) else {}
-    if d is None:
-        d = {}
+    # rCode/rMessage 검사
+    if isinstance(j, dict):
+        rcode = j.get("rCode") or j.get("code")
+        if rcode and str(rcode).upper() not in ("0", "SUCCESS"):
+            print("[INFO] API not success:", rcode, j.get("rMessage") or j.get("message"))
+            return []
 
-    # 2) 제품 리스트가 있을 법한 경로들을 차례로 검사
+    data_node = j.get("data") if isinstance(j, dict) else None
+    # 케이스별로 리스트 찾기
     candidates = None
-    candidate_paths = [
-        ("productData",),           # 문서 예시
-        ("products",),              # 변형 케이스
-        ("content",),               # 간혹 컨텐츠 배열로 올 때
-        ("productList",),           # 다른 응답군
-        (),                         # data 자체가 리스트인 경우
-    ]
-
-    for path_tuple in candidate_paths:
-        node = d
-        if path_tuple:  # dict 안을 내려감
-            for k in path_tuple:
-                if isinstance(node, dict):
-                    node = node.get(k)
-                else:
-                    node = None
-                    break
-        # 빈 튜플이면 data 자체 검사
-        else:
-            node = d
-
-        if isinstance(node, list) and len(node) > 0:
-            candidates = node
-            break
-
-    # 3) 혹시 data 바깥 최상위에 리스트가 오는 케이스
-    if not candidates and isinstance(j, dict):
-        for k in ("productData", "products", "content", "productList"):
-            node = j.get(k)
-            if isinstance(node, list) and len(node) > 0:
-                candidates = node
+    if isinstance(data_node, list):
+        candidates = data_node
+    elif isinstance(data_node, dict):
+        for k in ("productData", "products", "content", "productList", "items"):
+            v = data_node.get(k)
+            if isinstance(v, list) and v:
+                candidates = v
                 break
-
+    if not candidates and isinstance(j, dict):
+        for k in ("productData", "products", "content", "productList", "items"):
+            v = j.get(k)
+            if isinstance(v, list) and v:
+                candidates = v
+                break
     if not candidates:
-        # 디버그용으로 키 보여주기
-        if DEBUG and isinstance(d, dict):
-            print("[INFO] data keys:", list(d.keys()))
+        if DEBUG:
+            print("[INFO] no candidates; data keys:", list(data_node.keys()) if isinstance(data_node, dict) else type(data_node).__name__)
         return []
 
-    # 4) 필드명 정규화(템플릿에서 쓰는 키로 변환)
+    # 정규화
     def norm(p: dict) -> dict:
-        title = p.get("productName") or p.get("title") or ""
-        price = p.get("productPrice") or p.get("price") or p.get("lowestPrice") or ""
-        img   = p.get("imageUrl") or p.get("image") or ""
-        link  = p.get("productUrl") or p.get("link") or ""
         return {
-            "productName": title,
-            "productPrice": price,
-            "imageUrl": img,
-            "productUrl": link
+            "productName":  p.get("productName") or p.get("title") or "",
+            "productPrice": p.get("productPrice") or p.get("price") or p.get("lowestPrice") or "",
+            "imageUrl":     p.get("imageUrl") or p.get("image") or "",
+            "productUrl":   p.get("productUrl") or p.get("link") or ""
         }
-
     items = [norm(x) for x in candidates if isinstance(x, dict)]
-
     if DEBUG:
         print("PARSED_COUNT=", len(items))
         if items:
-            print("FIRST_ITEM_SAMPLE=", {k: items[0].get(k) for k in ("productName", "productPrice", "imageUrl", "productUrl")})
-
+            print("FIRST_ITEM_SAMPLE=", {k: items[0].get(k) for k in ("productName","productPrice","imageUrl","productUrl")})
     return items
 def fetch_random_products():
     all_products = []

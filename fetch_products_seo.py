@@ -229,21 +229,22 @@ def build_html(products):
     <div class="grid">
 """
     for p in products:
-        name = (p.get("productName") or "")[:60]
-        desc = (p.get("productName") or "")[:120]
-        price = p.get("price") or ""
-        img = p.get("imageUrl") or ""
-        link = p.get("productUrl") or "#"
-        html += f"""
-        <article itemscope itemtype="https://schema.org/Product">
-            <h2 itemprop="name">{name}...</h2>
-            <img src="{img}" alt="{name}" itemprop="image">
-            <p class="price"><span itemprop="price">{price}</span>원</p>
-            <a class="btn" href="{link}" target="_blank" rel="nofollow noopener" itemprop="url">👉 보러가기</a>
-            <meta itemprop="brand" content="쿠팡">
-            <meta itemprop="description" content="{desc}">
-        </article>
-"""
+      name = (p.get("productName") or p.get("title") or "")[:60]
+      desc = (p.get("productName") or p.get("title") or "")[:120]
+      price = p.get("productPrice") or p.get("price") or ""
+      img = p.get("imageUrl") or p.get("image") or ""
+      link = p.get("productUrl") or p.get("link") or "#"
+
+      html += f"""
+      <article itemscope itemtype="https://schema.org/Product">
+        <h2 itemprop="name">{name}...</h2>
+        <img src="{img}" alt="{name}" itemprop="image">
+        <p class="price"><span itemprop="price">{price}</span>원</p>
+        <a class="btn" href="{link}" target="_blank" rel="nofollow noopener" itemprop="url">👉 보러가기</a>
+        <meta itemprop="brand" content="쿠팡">
+        <meta itemprop="description" content="{desc}">
+      </article>
+      """
     html += """
     </div>
 </body>

@@ -48,53 +48,65 @@ SEARCH_KEYWORDS = [
 
 # 이미 맨 위에 있음: import urllib.parse, import requests, import time, hmac, hashlib, base64
 
-def generate_hmac(method: str, path_with_query: str, secret_key: str, access_key: str, dt: str | None = None) -> tuple[str, str]:
+def generate_hmac(method, path_with_query, secret_key, access_key, dt=None):
     """
-    path_with_query: 반드시 최종 인코딩이 반영된 문자열(예: /.../search?keyword=%EB...&limit=50)
-    dt: 서명 시각(YYMMDDTHHMMSS, UTC). None이면 지금 시각 사용.
-    return: (Authorization 헤더 값, dt)
+    ISO8601 UTC(YYYY-MM-DDTHH:MM:SSZ) 타임스탬프로 서명.
+    path_with_query: 최종 인코딩이 반영된 '/.../path?key=val&...' 문자열(PreparedRequest에서 추출)
+    return: (Authorization 헤더 문자열, signed-date 문자열)
     """
     if dt is None:
-        dt = time.strftime("%y%m%dT%H%M%S", time.gmtime())
+        dt = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())  # ISO8601 UTC
+
     path, query = (path_with_query.split("?", 1) + [""])[:2]
-    message = dt + method + path + query
-    signature = hmac.new(secret_key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).digest()
+    message = dt + method + path + query  # Coupang Open API 서명 포맷
+
+    signature = hmac.new(
+        secret_key.encode("utf-8"),
+        message.encode("utf-8"),
+        hashlib.sha256
+    ).digest()
     signed = base64.b64encode(signature).decode("utf-8")
-    auth = f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={dt}, signature={signed}"
+
+    auth = (
+        "CEA "
+        f"algorithm=HmacSHA256, "
+        f"access-key={access_key}, "
+        f"signed-date={dt}, "
+        f"signature={signed}"
+    )
     return auth, dt
 
 
 def fetch_products(keyword: str):
     """
-    1) requests.PreparedRequest 로 '진짜 전송될 URL'을 먼저 만든다.
-    2) 그 URL의 path+query를 그대로 서명에 사용한다.
-    3) 같은 요청(prepared request)에 Authorization 헤더를 주입해서 전송한다.
+    1) requests.PreparedRequest로 '실제 전송될 URL' 생성
+    2) 그 URL의 path+query로 서명
+    3) 같은 PreparedRequest에 Authorization 헤더 주입 후 전송
     """
     path = "/v2/providers/affiliate_open_api/apis/openapi/v1/products/search"
     params = {"keyword": keyword, "limit": 50}
 
-    # 1) 최종 인코딩 포함 URL 생성
+    # 1) 최종 URL 준비(인코딩/파라미터 정렬까지 확정)
     req = requests.Request("GET", DOMAIN + path, params=params)
-    prep = req.prepare()  # 여기서 최종 URL이 결정됨(인코딩/정렬 포함)
+    prep = req.prepare()
     parsed = urllib.parse.urlsplit(prep.url)
     path_with_query = parsed.path + (("?" + parsed.query) if parsed.query else "")
 
-    # 2) 동일한 path_with_query로 서명
+    # 2) 동일한 path_with_query로 서명 생성(ISO8601)
     authorization, dt = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY)
 
-    # 3) 같은 prepared request에 헤더 주입 후 전송
+    # 3) 같은 요청에 헤더 주입 후 전송
     prep.headers["Authorization"] = authorization
     prep.headers["Content-Type"] = "application/json;charset=UTF-8"
-    # 선택: 참고용으로 날짜 헤더도 같이 보냄(서명에는 이미 포함됨)
+    # 선택: 참고용(서명에는 이미 포함됨)
     prep.headers["X-Authorization-Date"] = dt
 
     s = requests.Session()
     resp = s.send(prep, timeout=10)
 
-    if DEBUG:
+    if 'DEBUG' in globals() and DEBUG:
         print(f"[REQ] keyword={keyword} url={resp.request.url} status={resp.status_code} len={len(resp.content)}")
         if resp.status_code >= 400:
-            # 본문 힌트(보안상 일부만): 쿠팡이 이유 메시지 내려줄 때가 있음
             print("[BODY]", (resp.text or "")[:500])
 
     try:

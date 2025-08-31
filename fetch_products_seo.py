@@ -391,7 +391,8 @@ def build_html(products):
     for p in products:
         name_raw = p.get("productName") or p.get("title") or ""
         name = (name_raw or "")[:60]
-        price = p.get("productPrice") or p.get("price") or ""
+        price_raw = p.get("productPrice") or p.get("price") or ""
+        price = _fmt_price_safe(price_raw)
         img = (p.get("imageUrl") or p.get("productImage") or p.get("image") or "").strip()
         link_out = (p.get("productUrl") or p.get("link") or "#").strip()
 

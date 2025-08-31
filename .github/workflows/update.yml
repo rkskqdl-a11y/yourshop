@@ -1,8 +1,9 @@
 name: Update Coupang Products
 
 on:
-  schedule:
-    - cron: "0 4 * * *"   # 매일 04:00 UTC = KST 13:00
+  # 자동 스케줄은 끔. 필요하면 아래 주석 해제해서 사용.
+  # schedule:
+  #   - cron: "0 4 * * *"   # 매일 04:00 UTC = KST 13:00
   workflow_dispatch:
 
 permissions:
@@ -64,10 +65,17 @@ jobs:
         run: |
           git config user.email "actions@github.com"
           git config user.name "github-actions[bot]"
+
+          # 변경 없으면 스킵
           if git diff --quiet; then
             echo "No changes to commit"
             exit 0
           fi
-          git add .last_run index.html sitemap.xml robots.txt
-          git commit -m "Auto-update products"
+
+          # .last_run이 있을 때만 추가(없어도 실패 안 하게)
+          files="index.html sitemap.xml robots.txt"
+          [ -f .last_run ] && files=".last_run $files"
+
+          git add $files
+          git commit -m "Manual update products"
           git push origin HEAD:main

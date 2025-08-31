@@ -131,7 +131,7 @@ def build_product_detail_html(item: dict, detail_url: str) -> str:
   <div class="section">
     <h2 style="margin:0 0 8px 0;">상품 한눈 요약</h2>
     <ul style="margin:0; padding-left:18px; line-height:1.6;">
-      <li>대표 이미지/가격은 파트너스 응답을 기준으로 표시됩니다.</li>
+      <li>이미지·가격은 검증된 응답 정보를 바탕으로 표기돼요(시점별 상이할 수 있어요).</li>
       <li>최신 가격/재고/혜택은 ‘실시간 가격보기’에서 다시 확인하세요.</li>
     </ul>
   </div>

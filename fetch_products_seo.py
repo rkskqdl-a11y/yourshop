@@ -383,35 +383,45 @@ def build_html(products):
     <div class="grid">
 """
     # 카드 루프
-    for p in products:
-        name = (p.get("productName") or p.get("title") or "")[:60]
-        desc = (p.get("productName") or p.get("title") or "")[:120]
-        price = p.get("productPrice") or p.get("price") or ""
+  for p in products:
+    name_raw = p.get("productName") or p.get("title") or ""
+    name = (name_raw or "")[:60]
+    price = p.get("productPrice") or p.get("price") or ""
+    img = (p.get("imageUrl") or p.get("productImage") or p.get("image") or "").strip()
+    link_out = (p.get("productUrl") or p.get("link") or "#").strip()
 
-        # 이미지 우선순위 및 정리
-        img = (p.get("imageUrl") or p.get("productImage") or p.get("image") or "").strip()
-        link = (p.get("productUrl") or p.get("link") or "#").strip()
+    # 내부 상세 경로/URL 확보(선호: internalPath, 없으면 get_detail_paths)
+    detail_path = p.get("internalPath")
+    if not detail_path:
+        detail_path, _ = get_detail_paths(p)
 
-        # 스킴 보정: //, http → https
-        if img.startswith("//"):
-            img = "https:" + img
-        elif img.startswith("http:"):
-            img = "https:" + img[5:]
+    # 이미지 스킴 보정
+    if img.startswith("//"): img = "https:" + img
+    elif img.startswith("http:"): img = "https:" + img[5:]
+    if not img:
+        img = "https://via.placeholder.com/600x400?text=No+Image"
 
-        # 빈 값이면 플레이스홀더
-        if not img:
-            img = "https://via.placeholder.com/600x400?text=No+Image"
+    html += f"""
+    <article itemscope itemtype="https://schema.org/Product">
+      <!-- 제목/이미지: 내부 상세로 -->
+      <a href="/{detail_path}" class="title-link" itemprop="url">
+        <h2 class="title" itemprop="name">{name}</h2>
+      </a>
+      <a href="/{detail_path}">
+        <img src="{img}" alt="{name}" itemprop="image" loading="lazy" referrerpolicy="no-referrer">
+      </a>
 
-        html += f"""
-        <article itemscope itemtype="https://schema.org/Product">
-            <h2 itemprop="name">{name}...</h2>
-            <img src="{img}" alt="{name}" itemprop="image" loading="lazy" referrerpolicy="no-referrer">
-            <p class="price"><span itemprop="price">{price}</span>원</p>
-            <a class="btn" href="{link}" target="_blank" rel="nofollow noopener" itemprop="url">👉 보러가기</a>
-            <meta itemprop="brand" content="쿠팡">
-            <meta itemprop="description" content="{desc}">
-        </article>
-        """
+      <p class="price"><span itemprop="price">{price}</span>원</p>
+
+      <!-- 버튼: 외부(쿠팡 파트너스)로 -->
+      <a class="btn" href="{link_out}" target="_blank" rel="nofollow sponsored noopener">
+        쿠팡에서 보기
+      </a>
+
+      <meta itemprop="brand" content="쿠팡">
+      <meta itemprop="description" content="{name}">
+    </article>
+    """
 
     html += """
     </div>

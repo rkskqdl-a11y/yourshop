@@ -9,6 +9,7 @@ import requests
 import random
 import pathlib
 import urllib.parse
+import json
 
 # ===== 0.5) 내부 상세 URL 헬퍼 =====
 def ensure_dir(path: str):
@@ -37,7 +38,127 @@ def get_detail_paths(item: dict) -> tuple[str, str]:
     local = os.path.join("p", f"{h}.html")
     url   = f"{SITE_URL}p/{h}.html"
     return local, url
+    
+def _fmt_price_safe(v):
+    # 가격 콤마 포맷(네가 이미 _fmt_price가 있으면 그거 써도 됨)
+    try:
+        n = int(float(str(v).replace(",", "").strip()))
+        return f"{n:,}"
+    except:
+        return str(v).strip()
 
+def build_product_detail_html(item: dict, detail_url: str) -> str:
+    name = (item.get("productName") or "").strip()
+    price = _fmt_price_safe(item.get("productPrice") or item.get("price") or "")
+    img = (item.get("imageUrl") or item.get("productImage") or item.get("image") or "").strip()
+    coupang_url = (item.get("productUrl") or item.get("link") or "").strip()
+    if img.startswith("//"):
+        img = "https:" + img
+    elif img.startswith("http:"):
+        img = "https:" + img[5:]
+    if not img:
+        img = "https://via.placeholder.com/800x500?text=No+Image"
+
+    # JSON-LD(Product)
+    product_ld = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": name,
+        "image": img,
+        "offers": {
+            "@type": "Offer",
+            "priceCurrency": "KRW",
+            "price": str(item.get("productPrice") or item.get("price") or ""),
+            "url": coupang_url
+        },
+        "url": detail_url
+    }
+    ld_json = json.dumps(product_ld, ensure_ascii=False)
+
+    title = f"{name} | YourShop"
+    desc = f"{name} 베스트 가격/구성 살펴보고, 버튼으로 바로 확인해보세요."
+
+    build_ts = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+
+    html = f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <!-- build:{build_ts} -->
+  <meta charset="UTF-8">
+  <title>{title}</title>
+  <meta name="description" content="{desc}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="{detail_url}">
+  <meta name="referrer" content="no-referrer">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="{title}">
+  <meta property="og:description" content="{desc}">
+  <meta property="og:image" content="{img}">
+  <meta property="og:url" content="{detail_url}">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <script type="application/ld+json">
+{ld_json}
+  </script>
+
+  <style>
+    :root {{
+      --text:#e5e7eb; --muted:#94a3b8; --card:#111827; --border:#1f2937; --accent:#22d3ee;
+    }}
+    body {{ background:#0b1020; color:var(--text); font-family:Arial,sans-serif; max-width:900px; margin:auto; padding:20px; }}
+    h1 {{ margin:0 0 10px 0; }}
+    .price {{ color:var(--accent); font-weight:800; margin:8px 0 14px 0; font-size:20px; }}
+    img.hero {{ max-width:100%; border-radius:12px; display:block; }}
+    .btn {{
+      display:inline-block; margin-top:14px; padding:10px 14px; border-radius:12px;
+      color:var(--text); text-decoration:none; border:1px solid #334155;
+      background:linear-gradient(180deg,#0b1224 0%,#0a0f1f 100%); transition:.2s ease;
+    }}
+    .btn:hover {{ transform: translateY(-1px); border-color:#556; }}
+    .notice {{ color:var(--muted); font-size:13px; margin:10px 0 20px 0; }}
+    .section {{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; margin:16px 0; }}
+  </style>
+</head>
+<body>
+  <h1>{name}</h1>
+  <p class="notice">※ 이 페이지의 외부 링크는 쿠팡 파트너스 링크이며, 일정액의 수수료를 받을 수 있습니다.</p>
+
+  <div class="section">
+    <img class="hero" src="{img}" alt="{name}" loading="lazy" referrerpolicy="no-referrer">
+    <div class="price">{price}원</div>
+    <a class="btn" href="{coupang_url}" target="_blank" rel="nofollow sponsored noopener">쿠팡에서 보기</a>
+  </div>
+
+  <div class="section">
+    <h2 style="margin:0 0 8px 0;">상품 한눈 요약</h2>
+    <ul style="margin:0; padding-left:18px; line-height:1.6;">
+      <li>대표 이미지/가격은 파트너스 응답을 기준으로 표시됩니다.</li>
+      <li>최신 가격/재고/혜택은 ‘쿠팡에서 보기’에서 다시 확인하세요.</li>
+    </ul>
+  </div>
+</body>
+</html>
+"""
+    return html
+def write_product_detail_pages(items: list):
+    """
+    오늘 배치(items)에 대해 /p/{productId}.html 상세 페이지 파일 생성.
+    """
+    ensure_dir("p")
+    written = 0
+    for it in items:
+        local, url = get_detail_paths(it)
+        try:
+            html = build_product_detail_html(it, url)
+            with open(local, "w", encoding="utf-8") as f:
+                f.write(html)
+            written += 1
+        except Exception as e:
+            print("[WARN] detail write fail:", local, e)
+    if DEBUG:
+        print(f"[DETAIL] written={written}")
+        
 # ===== 1) 환경/설정 로드 =====
 ACCESS_KEY = os.getenv("ACCESS_KEY")
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -321,7 +442,10 @@ Sitemap: {SITE_URL}sitemap.xml
 
 # ===== 8) 메인 =====
 if __name__ == "__main__":
+    ensure_dir("p")
     products = fetch_random_products()
+    # 상세 페이지 생성(오늘 30개)
+    write_product_detail_pages(products)
     html = build_html(products)
     sitemap = build_sitemap(products)
     robots = build_robots()

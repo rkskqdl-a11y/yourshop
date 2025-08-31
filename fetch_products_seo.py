@@ -125,14 +125,14 @@ def build_product_detail_html(item: dict, detail_url: str) -> str:
   <div class="section">
     <img class="hero" src="{img}" alt="{name}" loading="lazy" referrerpolicy="no-referrer">
     <div class="price">{price}원</div>
-    <a class="btn" href="{coupang_url}" target="_blank" rel="nofollow sponsored noopener">쿠팡에서 보기</a>
+    <a class="btn" href="{coupang_url}" target="_blank" rel="nofollow sponsored noopener">실시간 가격보기</a>
   </div>
 
   <div class="section">
     <h2 style="margin:0 0 8px 0;">상품 한눈 요약</h2>
     <ul style="margin:0; padding-left:18px; line-height:1.6;">
       <li>대표 이미지/가격은 파트너스 응답을 기준으로 표시됩니다.</li>
-      <li>최신 가격/재고/혜택은 ‘쿠팡에서 보기’에서 다시 확인하세요.</li>
+      <li>최신 가격/재고/혜택은 ‘실시간 가격보기’에서 다시 확인하세요.</li>
     </ul>
   </div>
 </body>
@@ -419,7 +419,7 @@ def build_html(products):
           <p class="price"><span itemprop="price">{price}</span>원</p>
 
           <a class="btn" href="{link_out}" target="_blank" rel="nofollow sponsored noopener">
-            쿠팡에서 보기
+            실시간 가격보기
           </a>
 
           <meta itemprop="brand" content="쿠팡">

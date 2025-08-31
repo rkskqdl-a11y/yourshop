@@ -10,6 +10,33 @@ import random
 import pathlib
 import urllib.parse
 
+# ===== 0.5) 내부 상세 URL 헬퍼 =====
+def ensure_dir(path: str):
+    try:
+        os.makedirs(path, exist_ok=True)
+    except Exception:
+        pass
+
+def get_detail_paths(item: dict) -> tuple[str, str]:
+    """
+    내부 상세 페이지의 (로컬 파일 경로, 퍼블릭 URL)을 돌려준다.
+    기본 규칙: /p/{productId}.html
+    productId가 없으면 productName 기반 해시로 대체.
+    주의: SITE_URL은 파일 아래쪽에서 정의돼 있어도 문제 없음(함수 호출 시점에 참조됨).
+    """
+    pid = item.get("productId")
+    if pid:
+        pid = str(pid)
+        local = os.path.join("p", f"{pid}.html")
+        url   = f"{SITE_URL}p/{pid}.html"
+        return local, url
+
+    # fallback: productId가 없는 희귀 케이스
+    name = (item.get("productName") or "item").strip()
+    h = hashlib.md5(name.encode("utf-8")).hexdigest()[:10]
+    local = os.path.join("p", f"{h}.html")
+    url   = f"{SITE_URL}p/{h}.html"
+    return local, url
 
 # ===== 1) 환경/설정 로드 =====
 ACCESS_KEY = os.getenv("ACCESS_KEY")

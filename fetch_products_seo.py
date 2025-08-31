@@ -22,8 +22,7 @@ def get_detail_paths(item: dict) -> tuple[str, str]:
     """
     내부 상세 페이지의 (로컬 파일 경로, 퍼블릭 URL)을 돌려준다.
     기본 규칙: /p/{productId}.html
-    productId가 없으면 productName 기반 해시로 대체.
-    주의: SITE_URL은 파일 아래쪽에서 정의돼 있어도 문제 없음(함수 호출 시점에 참조됨).
+    productId가 없으면 (상품명|쿠팡링크) 해시로 대체.
     """
     pid = item.get("productId")
     if pid:
@@ -32,15 +31,15 @@ def get_detail_paths(item: dict) -> tuple[str, str]:
         url   = f"{SITE_URL}p/{pid}.html"
         return local, url
 
-    # fallback: productId가 없는 희귀 케이스
     name = (item.get("productName") or "item").strip()
-    h = hashlib.md5(name.encode("utf-8")).hexdigest()[:10]
+    out  = (item.get("productUrl") or item.get("link") or "").strip()
+    key  = (name + "|" + out).encode("utf-8")
+    h    = hashlib.md5(key).hexdigest()[:10]
     local = os.path.join("p", f"{h}.html")
     url   = f"{SITE_URL}p/{h}.html"
     return local, url
-    
+
 def _fmt_price_safe(v):
-    # 가격 콤마 포맷(네가 이미 _fmt_price가 있으면 그거 써도 됨)
     try:
         n = int(float(str(v).replace(",", "").strip()))
         return f"{n:,}"
@@ -52,6 +51,7 @@ def build_product_detail_html(item: dict, detail_url: str) -> str:
     price = _fmt_price_safe(item.get("productPrice") or item.get("price") or "")
     img = (item.get("imageUrl") or item.get("productImage") or item.get("image") or "").strip()
     coupang_url = (item.get("productUrl") or item.get("link") or "").strip()
+
     if img.startswith("//"):
         img = "https:" + img
     elif img.startswith("http:"):
@@ -59,7 +59,6 @@ def build_product_detail_html(item: dict, detail_url: str) -> str:
     if not img:
         img = "https://via.placeholder.com/800x500?text=No+Image"
 
-    # JSON-LD(Product)
     product_ld = {
         "@context": "https://schema.org",
         "@type": "Product",
@@ -77,7 +76,6 @@ def build_product_detail_html(item: dict, detail_url: str) -> str:
 
     title = f"{name} | YourShop"
     desc = f"{name} 베스트 가격/구성 살펴보고, 버튼으로 바로 확인해보세요."
-
     build_ts = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
 
     html = f"""<!DOCTYPE html>
@@ -141,6 +139,7 @@ def build_product_detail_html(item: dict, detail_url: str) -> str:
 </html>
 """
     return html
+
 def write_product_detail_pages(items: list):
     """
     오늘 배치(items)에 대해 /p/{productId}.html 상세 페이지 파일 생성.
@@ -158,7 +157,7 @@ def write_product_detail_pages(items: list):
             print("[WARN] detail write fail:", local, e)
     if DEBUG:
         print(f"[DETAIL] written={written}")
-        
+
 # ===== 1) 환경/설정 로드 =====
 ACCESS_KEY = os.getenv("ACCESS_KEY")
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -175,7 +174,6 @@ SEARCH_KEYWORDS = [
     "자전거", "헬스 보충제", "캠핑 용품", "여행 가방", "패션 신발", "아동 장난감"
 ]
 
-
 # ===== 2) 시작 로그(디버그) =====
 def _mask(v):
     return "(none)" if not v else f"len={len(v)} head={v[:3]}***"
@@ -190,15 +188,12 @@ print("HAS_INDEX=", os.path.exists("index.html"))
 print("DEBUG_LOG=", os.getenv("DEBUG_LOG", ""))
 print("COUNT_ENV=", os.getenv("COUNT", ""))
 
-
 # ===== 3) HMAC (쿠팡 문서 포맷: hexdigest + yyMMddTHHmmssZ) =====
 def generate_hmac(method: str, path_with_query: str, secret_key: str, access_key: str, dt: str | None = None) -> tuple[str, str]:
     """
-    쿠팡 문서 포맷:
     - signed-date: yyMMddTHHmmssZ (UTC)
-    - signature: HMAC-SHA256 hexdigest 문자열 (base64 아님)
+    - signature: HMAC-SHA256 hexdigest
     - message = signed-date + METHOD + path + query
-    반환: (Authorization 헤더, signed-date)
     """
     if dt is None:
         dt = time.strftime('%y%m%d', time.gmtime()) + 'T' + time.strftime('%H%M%S', time.gmtime()) + 'Z'
@@ -215,29 +210,27 @@ def generate_hmac(method: str, path_with_query: str, secret_key: str, access_key
     auth = f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={dt}, signature={signature}"
     return auth, dt
 
-
 # ===== 4) 상품 조회(검색 API) =====
 def fetch_products(keyword: str):
     """
-    GET /v2/providers/affiliate_open_api/apis/openapi/v1/products/search
-    - PreparedRequest로 최종 URL 생성 → 그 path+query로 서명
-    - limit 20 시도 후 rCode 400(limit out of range)이면 10으로 재시도
-    - 응답 JSON에서 리스트 추출 → 필드 정규화(productName/productPrice/imageUrl/productUrl) 후 반환
+    /v2/.../products/search
+    - PreparedRequest 최종 URL → 그 path+query로 서명
+    - limit 20 시도, rCode 400이면 10 재시도
+    - 리스트 추출 → 정규화(내부 상세 경로 포함)
     """
     path = "/v2/providers/affiliate_open_api/apis/openapi/v1/products/search"
 
     def do_request(limit_val: int):
         params = {"keyword": keyword, "limit": limit_val}
-        # 최종 URL 준비
         req = requests.Request("GET", DOMAIN + path, params=params)
         prep = req.prepare()
         parsed = urllib.parse.urlsplit(prep.url)
         path_with_query = parsed.path + (("?" + parsed.query) if parsed.query else "")
-        # 서명(hexdigest + yyMMddTHHmmssZ)
+
         authorization, _ = generate_hmac("GET", path_with_query, SECRET_KEY, ACCESS_KEY, None)
-        # 동일 prepared 요청에 헤더 주입
         prep.headers["Authorization"] = authorization
         prep.headers["Content-Type"] = "application/json;charset=UTF-8"
+
         s = requests.Session()
         resp = s.send(prep, timeout=10)
         if DEBUG:
@@ -245,14 +238,12 @@ def fetch_products(keyword: str):
             print("[BODYFULL]", (resp.text or "")[:2000])
         return resp
 
-    # 1차: 20
     resp = do_request(20)
     try:
         j = resp.json()
     except Exception:
         j = {}
 
-    # limit 에러 시 10으로 재시도
     if isinstance(j, dict) and (j.get("rCode") == "400" or j.get("code") == "ERROR") and "limit is out of range" in (str(j.get("rMessage","")) + str(j.get("message",""))):
         if DEBUG:
             print("[INFO] retry with smaller limit=10")
@@ -262,21 +253,18 @@ def fetch_products(keyword: str):
         except Exception:
             j = {}
 
-    # HTTP 오류
     try:
         resp.raise_for_status()
     except Exception as e:
         print("[WARN] HTTP error:", e)
         return []
 
-    # API 성공 코드 확인
     if isinstance(j, dict):
         rcode = j.get("rCode") or j.get("code")
         if rcode and str(rcode).upper() not in ("0", "SUCCESS"):
             print("[INFO] API not success:", rcode, j.get("rMessage") or j.get("message"))
             return []
 
-    # data에서 후보 리스트 찾기
     data_node = j.get("data") if isinstance(j, dict) else None
     candidates = None
 
@@ -304,26 +292,36 @@ def fetch_products(keyword: str):
                 print("[INFO] data is:", type(data_node).__name__)
         return []
 
-    # 필드 정규화 (이미지: productImage도 커버)
     def norm(p: dict) -> dict:
+        product_id = p.get("productId")
+        internal_path = f"p/{product_id}.html" if product_id else None
+        internal_url  = f"{SITE_URL}p/{product_id}.html" if product_id else None
+        category = p.get("categoryName") or p.get("category") or ""
         return {
             "productName":  p.get("productName") or p.get("title") or "",
             "productPrice": p.get("productPrice") or p.get("price") or p.get("lowestPrice") or "",
             "imageUrl":     (p.get("imageUrl") or p.get("productImage") or p.get("image") or ""),
-            "productUrl":   p.get("productUrl") or p.get("link") or ""
+            "productUrl":   p.get("productUrl") or p.get("link") or "",
+            "productId":    product_id,
+            "rank":         p.get("rank"),
+            "category":     category,
+            "internalPath": internal_path,
+            "internalUrl":  internal_url,
         }
 
     items = [norm(x) for x in candidates if isinstance(x, dict)]
     if DEBUG:
         print("PARSED_COUNT=", len(items))
         if items:
-            print("FIRST_ITEM_SAMPLE=", {k: items[0].get(k) for k in ("productName","productPrice","imageUrl","productUrl")})
+            print("FIRST_ITEM_SAMPLE=", {k: items[0].get(k) for k in ("productName","productPrice","imageUrl","productUrl","productId","internalPath","internalUrl")})
+            lp, lu = get_detail_paths(items[0])
+            print("DETAIL_SAMPLE_PATH_URL=", lp, lu)
     return items
 
-
-# ===== 5) 여러 키워드 합쳐서 COUNT개 만들기 =====
+# ===== 5) 여러 키워드 합쳐 COUNT개 =====
 def fetch_random_products():
     all_items = []
+    # 키워드별 10개씩 최대한 모아서 COUNT로 슬라이스
     for kw in SEARCH_KEYWORDS:
         try:
             items = fetch_products(kw)
@@ -332,15 +330,15 @@ def fetch_random_products():
         except Exception as e:
             if DEBUG:
                 print("[WARN] fetch fail for", kw, e)
-    # 섞고 COUNT개만 사용
+        if len(all_items) >= COUNT * 2:
+            break
     random.shuffle(all_items)
     return all_items[:COUNT]
 
-
-# ===== 6) HTML 생성(이미지 보강 포함) =====
+# ===== 6) HTML 생성(홈: 제목/이미지=내부, 버튼=쿠팡) =====
 def build_html(products):
-    seo_title = "오늘의 추천 특가상품 30선 | 쇼핑몰 베스트"
-    seo_description = "가전제품, 패션, 캠핑용품, 헬스, 아동 장난감까지 오늘의 추천 베스트 특가상품 30개를 모았습니다."
+    seo_title = "오늘의 셀렉션 30 | YourShop"
+    seo_description = "에디터가 엄선한 오늘의 셀렉션 30. 프리미엄 큐레이션으로 합리적인 쇼핑을 도와드립니다."
     seo_keywords = ",".join(SEARCH_KEYWORDS)
     og_image = ""
     if products:
@@ -368,62 +366,65 @@ def build_html(products):
     <meta name="twitter:card" content="summary_large_image">
 
     <style>
-        body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: auto; padding: 20px; }}
-        .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }}
-        article {{ border: 1px solid #ddd; padding: 10px; border-radius: 10px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); }}
+        body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: auto; padding: 20px; background:#0b1020; color:#e5e7eb; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }}
+        article {{ background:#111827; border:1px solid #1f2937; padding: 12px; border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.25); }}
         article img {{ max-width: 100%; border-radius: 10px; display: block; }}
-        .price {{ font-weight: bold; color: red; margin-top: 5px; }}
-        .btn {{ display: inline-block; margin-top: 10px; padding: 8px 12px; background: #ff5722; color: #fff; text-decoration: none; border-radius: 5px; }}
-        .btn:hover {{ background: #e64a19; }}
+        .price {{ font-weight: bold; color: #22d3ee; margin-top: 6px; }}
+        .btn {{
+          display:inline-block; margin-top:10px; padding:10px 14px; border-radius:12px;
+          color:#e5e7eb; text-decoration:none; border:1px solid #334155;
+          background: linear-gradient(180deg,#0b1224 0%, #0a0f1f 100%);
+          transition: all .2s ease;
+        }}
+        .btn:hover {{ transform: translateY(-1px); border-color:#556; }}
+        .title {{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.35; margin:0 0 8px 0; }}
+        .title-link {{ text-decoration:none; color:inherit; }}
+        .notice {{ color:#94a3b8; font-size:13px; margin-bottom: 12px; }}
     </style>
 </head>
 <body>
     <h1>{seo_title}</h1>
-    <p>※ 이 포스팅은 쿠팡 파트너스 활동의 일환으로, 일정액의 수수료를 제공받을 수 있습니다.</p>
+    <p class="notice">※ 이 포스팅은 쿠팡 파트너스 활동의 일환으로, 일정액의 수수료를 제공받을 수 있습니다.</p>
     <div class="grid">
 """
-    # 카드 루프
-  for p in products:
-    name_raw = p.get("productName") or p.get("title") or ""
-    name = (name_raw or "")[:60]
-    price = p.get("productPrice") or p.get("price") or ""
-    img = (p.get("imageUrl") or p.get("productImage") or p.get("image") or "").strip()
-    link_out = (p.get("productUrl") or p.get("link") or "#").strip()
+    for p in products:
+        name_raw = p.get("productName") or p.get("title") or ""
+        name = (name_raw or "")[:60]
+        price = p.get("productPrice") or p.get("price") or ""
+        img = (p.get("imageUrl") or p.get("productImage") or p.get("image") or "").strip()
+        link_out = (p.get("productUrl") or p.get("link") or "#").strip()
 
-    # 내부 상세 경로 확보(내부값 우선, 없으면 헬퍼로 생성)
-    detail_path = p.get("internalPath")
-    if not detail_path:
-        detail_path, _ = get_detail_paths(p)
+        detail_path = p.get("internalPath")
+        if not detail_path:
+            detail_path, _ = get_detail_paths(p)
 
-    # 이미지 스킴 보정
-    if img.startswith("//"):
-        img = "https:" + img
-    elif img.startswith("http:"):
-        img = "https:" + img[5:]
-    if not img:
-        img = "https://via.placeholder.com/600x400?text=No+Image"
+        if img.startswith("//"):
+            img = "https:" + img
+        elif img.startswith("http:"):
+            img = "https:" + img[5:]
+        if not img:
+            img = "https://via.placeholder.com/600x400?text=No+Image"
 
-    html += f"""
-    <article itemscope itemtype="https://schema.org/Product">
-      <!-- 제목/이미지: 내부 상세(상대 경로! 맨 앞 / 금지) -->
-      <a href="{detail_path}" class="title-link" itemprop="url">
-        <h2 class="title" itemprop="name">{name}</h2>
-      </a>
-      <a href="{detail_path}">
-        <img src="{img}" alt="{name}" itemprop="image" loading="lazy" referrerpolicy="no-referrer">
-      </a>
+        html += f"""
+        <article itemscope itemtype="https://schema.org/Product">
+          <a href="{detail_path}" class="title-link" itemprop="url">
+            <h2 class="title" itemprop="name">{name}</h2>
+          </a>
+          <a href="{detail_path}">
+            <img src="{img}" alt="{name}" itemprop="image" loading="lazy" referrerpolicy="no-referrer">
+          </a>
 
-      <p class="price"><span itemprop="price">{price}</span>원</p>
+          <p class="price"><span itemprop="price">{price}</span>원</p>
 
-      <!-- 버튼: 외부(쿠팡 파트너스) -->
-      <a class="btn" href="{link_out}" target="_blank" rel="nofollow sponsored noopener">
-        쿠팡에서 보기
-      </a>
+          <a class="btn" href="{link_out}" target="_blank" rel="nofollow sponsored noopener">
+            쿠팡에서 보기
+          </a>
 
-      <meta itemprop="brand" content="쿠팡">
-      <meta itemprop="description" content="{name}">
-    </article>
-    """
+          <meta itemprop="brand" content="쿠팡">
+          <meta itemprop="description" content="{name}">
+        </article>
+        """
 
     html += """
     </div>
@@ -432,18 +433,23 @@ def build_html(products):
 """
     return html
 
-
-# ===== 7) 사이트맵/로봇 =====
+# ===== 7) Sitemap / Robots =====
 def build_sitemap(products):
-    # 외부 도메인(쿠팡) 링크는 넣지 않는다. 내 사이트의 대표 URL만 등록.
-    urls = [SITE_URL]
+    urls = [SITE_URL]  # 홈
+
+    # /p 상세 페이지들 포함(인덱싱 가속)
+    if os.path.isdir("p"):
+        for name in os.listdir("p"):
+            if name.endswith(".html"):
+                urls.append(f"{SITE_URL}p/{name}")
+
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     for url in urls:
-        xml += f"  <url><loc>{url}</loc></url>\n"
+        xml += f"  <url><loc>{url}</loc><lastmod>{now}</lastmod></url>\n"
     xml += "</urlset>"
     return xml
-
 
 def build_robots():
     return f"""User-agent: *
@@ -451,13 +457,12 @@ Allow: /
 Sitemap: {SITE_URL}sitemap.xml
 """
 
-
 # ===== 8) 메인 =====
 if __name__ == "__main__":
-    ensure_dir("p")
+    ensure_dir("p")  # 상세 폴더 선생성
     products = fetch_random_products()
-    # 상세 페이지 생성(오늘 30개)
-    write_product_detail_pages(products)
+    write_product_detail_pages(products)  # /p/*.html 생성
+
     html = build_html(products)
     sitemap = build_sitemap(products)
     robots = build_robots()
@@ -468,6 +473,11 @@ if __name__ == "__main__":
         f.write(sitemap)
     with open("robots.txt", "w", encoding="utf-8") as f:
         f.write(robots)
+
+    # 항상 변경을 만들어 커밋 보장
+    build_ts = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    with open(".last_run", "w", encoding="utf-8") as f:
+        f.write(build_ts)
 
     print("[OK] index.html/sitemap.xml/robots.txt written")
     print("== DEBUG END ==")

@@ -2,7 +2,7 @@ name: Update Coupang Products
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # KST 09:00
+    - cron: "0 4 * * *"   # 매일 04:00 UTC = KST 13:00
   workflow_dispatch:
 
 permissions:
@@ -31,15 +31,14 @@ jobs:
       - name: Install dependencies
         run: pip install -U pip requests beautifulsoup4 lxml
 
-      # 파이썬 문법 오류를 먼저 잡아주는 단계(강추)
       - name: Syntax check
         run: python -m py_compile fetch_products_seo.py
 
-      - name: Debug env
+      - name: Debug event
         run: |
-          python -V
-          pwd
-          ls -la
+          echo "GITHUB_EVENT_NAME=${GITHUB_EVENT_NAME}"
+          echo "UTC now: $(date -u)"
+          echo "Local now: $(date)"
 
       - name: Run script
         env:
@@ -69,6 +68,6 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git add index.html sitemap.xml robots.txt
+          git add .last_run index.html sitemap.xml robots.txt
           git commit -m "Auto-update products"
           git push origin HEAD:main

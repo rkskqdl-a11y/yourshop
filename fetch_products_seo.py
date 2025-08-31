@@ -390,30 +390,32 @@ def build_html(products):
     img = (p.get("imageUrl") or p.get("productImage") or p.get("image") or "").strip()
     link_out = (p.get("productUrl") or p.get("link") or "#").strip()
 
-    # 내부 상세 경로/URL 확보(선호: internalPath, 없으면 get_detail_paths)
+    # 내부 상세 경로 확보(내부값 우선, 없으면 헬퍼로 생성)
     detail_path = p.get("internalPath")
     if not detail_path:
         detail_path, _ = get_detail_paths(p)
 
     # 이미지 스킴 보정
-    if img.startswith("//"): img = "https:" + img
-    elif img.startswith("http:"): img = "https:" + img[5:]
+    if img.startswith("//"):
+        img = "https:" + img
+    elif img.startswith("http:"):
+        img = "https:" + img[5:]
     if not img:
         img = "https://via.placeholder.com/600x400?text=No+Image"
 
     html += f"""
     <article itemscope itemtype="https://schema.org/Product">
-      <!-- 제목/이미지: 내부 상세로 -->
-      <a href="/{detail_path}" class="title-link" itemprop="url">
+      <!-- 제목/이미지: 내부 상세(상대 경로! 맨 앞 / 금지) -->
+      <a href="{detail_path}" class="title-link" itemprop="url">
         <h2 class="title" itemprop="name">{name}</h2>
       </a>
-      <a href="/{detail_path}">
+      <a href="{detail_path}">
         <img src="{img}" alt="{name}" itemprop="image" loading="lazy" referrerpolicy="no-referrer">
       </a>
 
       <p class="price"><span itemprop="price">{price}</span>원</p>
 
-      <!-- 버튼: 외부(쿠팡 파트너스)로 -->
+      <!-- 버튼: 외부(쿠팡 파트너스) -->
       <a class="btn" href="{link_out}" target="_blank" rel="nofollow sponsored noopener">
         쿠팡에서 보기
       </a>

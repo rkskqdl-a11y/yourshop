@@ -66,16 +66,16 @@ jobs:
           git config user.email "actions@github.com"
           git config user.name "github-actions[bot]"
 
-          # 변경 없으면 스킵
-          if git diff --quiet; then
+          # 1) 새 파일 포함해서 전부 스테이징
+          #    (p 디렉터리/아카이브/DB 등 앞으로 생길 것들도 한 번에 처리)
+          git add -A
+
+          # 2) 스테이징된 변경이 없으면 종료
+          if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
 
-          # .last_run이 있을 때만 추가(없어도 실패 안 하게)
-          files="index.html sitemap.xml robots.txt"
-          [ -f .last_run ] && files=".last_run $files"
-
-          git add $files
-          git commit -m "Manual update products"
+          # 3) 커밋/푸시
+          git commit -m "Auto-update products (with p pages)"
           git push origin HEAD:main

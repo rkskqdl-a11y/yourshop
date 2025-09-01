@@ -196,6 +196,7 @@ BIG_CATEGORY_POOL = [
   # 가전은 최소만 섞기(편향 방지)
   "전기포트", "토스터기", "선풍기", "가습기", "헤어드라이어"
 ]
+SEARCH_KEYWORDS = BIG_CATEGORY_POOL
 
 # ===== 2) 시작 로그(디버그) =====
 def _mask(v):

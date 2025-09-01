@@ -198,6 +198,36 @@ BIG_CATEGORY_POOL = [
 ]
 SEARCH_KEYWORDS = BIG_CATEGORY_POOL
 
+COOLDOWN_RUNS = 3
+KEYWORDS_PER_RUN = 24
+
+def _load_recent_keywords(path=".last_cats.json"):
+    try:
+        with open(path,"r",encoding="utf-8") as f:
+            return json.load(f) or []
+    except:
+        return []
+
+def _save_recent_keywords(keywords, path=".last_cats.json"):
+    hist = _load_recent_keywords(path)
+    hist.insert(0, keywords)
+    hist = hist[:COOLDOWN_RUNS]
+    with open(path,"w",encoding="utf-8") as f:
+        json.dump(hist, f, ensure_ascii=False)
+
+def pick_keywords_for_today(pool: list[str], k: int = KEYWORDS_PER_RUN) -> list[str]:
+    prev = _load_recent_keywords()
+    recent_flat = set(x for lst in prev for x in lst)
+    cand = [x for x in pool if x not in recent_flat]
+    random.shuffle(cand)
+    chosen = cand[:k]
+    if len(chosen) < k:
+        rest = [x for x in pool if x not in chosen]
+        random.shuffle(rest)
+        chosen += rest[:(k - len(chosen))]
+    _save_recent_keywords(chosen)
+    return chosen
+
 # ===== 2) 시작 로그(디버그) =====
 def _mask(v):
     return "(none)" if not v else f"len={len(v)} head={v[:3]}***"
@@ -343,27 +373,60 @@ def fetch_products(keyword: str):
     return items
 
 # ===== 5) 여러 키워드 합쳐 COUNT개 =====
-def fetch_random_products():
-    all_items = []
-    # 키워드별 10개씩 최대한 모아서 COUNT로 슬라이스
-    for kw in SEARCH_KEYWORDS:
-        try:
-            items = fetch_products(kw)
-            if items:
-                all_items.extend(items)
-        except Exception as e:
-            if DEBUG:
-                print("[WARN] fetch fail for", kw, e)
-        if len(all_items) >= COUNT * 2:
-            break
-    random.shuffle(all_items)
-    return all_items[:COUNT]
+MAX_PER_CATEGORY = 2
+TARGET_COUNT = int(os.getenv("COUNT","30"))
 
+def fetch_random_products():
+    keywords_today = pick_keywords_for_today(BIG_CATEGORY_POOL, k=KEYWORDS_PER_RUN)
+
+    raw = []
+    for kw in keywords_today:
+        try:
+            items = fetch_products(kw) or []
+        except Exception as e:
+            if DEBUG: print("[WARN] fetch fail:", kw, e)
+            items = []
+        random.shuffle(items)
+        raw.extend((kw, x) for x in items[:5])
+        if len(raw) > TARGET_COUNT * 4:
+            break
+
+    seen, dedup = set(), []
+    for kw, it in raw:
+        pid = str(it.get("productId") or "") + "|" + (it.get("productUrl") or it.get("link") or "")
+        if pid in seen: 
+            continue
+        seen.add(pid)
+        dedup.append((kw, it))
+
+    random.shuffle(dedup)
+    per_cat, picked = {}, []
+    for kw, it in dedup:
+        c = per_cat.get(kw, 0)
+        if c >= MAX_PER_CATEGORY:
+            continue
+        picked.append(it)
+        per_cat[kw] = c + 1
+        if len(picked) >= TARGET_COUNT:
+            break
+
+    if len(picked) < TARGET_COUNT:
+        for _, it in dedup:
+            if it not in picked:
+                picked.append(it)
+                if len(picked) >= TARGET_COUNT:
+                    break
+
+    if DEBUG:
+        top = sorted(per_cat.items(), key=lambda x: -x[1])[:10]
+        print("[MIX] cats picked:", top, "total=", len(picked))
+
+    return picked[:TARGET_COUNT]
 # ===== 6) HTML 생성(홈: 제목/이미지=내부, 버튼=쿠팡) =====
 def build_html(products):
     seo_title = "오늘의 셀렉션 30 | YourShop"
     seo_description = "에디터가 엄선한 오늘의 셀렉션 30. 프리미엄 큐레이션으로 합리적인 쇼핑을 도와드립니다."
-    seo_keywords = ",".join(SEARCH_KEYWORDS)
+    seo_keywords = ",".join(SEARCH_KEYWORDS[:20])
     og_image = ""
     if products:
         og_image = (products[0].get("imageUrl")

@@ -1,0 +1,39 @@
+name: Generate sitemap.xml
+
+on:
+  push:
+    paths:
+      - 'p/**'
+      - 'scripts/gen-sitemap.js'
+  schedule:
+    - cron: '0 * * * *'   # 매시간(UTC) 00분 실행
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # git 마지막 커밋시간(lastmod) 계산용
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generate sitemap.xml
+        run: node scripts/gen-sitemap.js
+
+      - name: Commit and push changes
+        run: |
+          if [[ -n "$(git status --porcelain sitemap.xml)" ]]; then
+            git config user.name "actions-bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add sitemap.xml
+            git commit -m "chore(seo): auto-generate sitemap.xml"
+            git push
+          else
+            echo "No sitemap changes to commit."
+          fi

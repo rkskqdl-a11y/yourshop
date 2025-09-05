@@ -1,50 +1,54 @@
-// scripts/gen-sitemap.js (프로젝트 페이지용: 퍼블릭 접두사 /yourshop 반영)
-// 목적: 루트의 p/*.html + 허브(/yourshop/)를 포함해 루트 /sitemap.xml 자동 생성
-// lastmod: 각 파일의 마지막 커밋 시간(없으면 현재 시각)
+// scripts/gen-sitemap.js (프로젝트 페이지용: 퍼블릭 접두사 /yourshop, 상대경로로 URL 생성)
+// 문제 원인: 절대 경로(/home/runner/…)가 URL에 들어감 → 상대 경로(p/..html)로 바꿔 해결
+// lastmod: 파일의 마지막 커밋 시간(없으면 현재 시각)
 
 const fs = require('fs').promises;
 const path = require('path');
 const { execSync } = require('child_process');
 
-// GitHub Pages 프로젝트 페이지 기본값
-const BASE = 'https://rkskqdl-a11y.github.io'; // 사용자 도메인
-const REPO = 'yourshop';                        // 이 레포 이름(퍼블릭 접두사)
-const PUBLIC_PREFIX = `/${REPO}`;               // "/yourshop"
+// GitHub Pages 프로젝트 페이지 기준
+const BASE = 'https://rkskqdl-a11y.github.io';
+const REPO = 'yourshop';
+const PUBLIC_PREFIX = `/${REPO}`; // "/yourshop"
 
-const PAGES_DIR = path.resolve('p');            // 루트의 p/ 폴더
-const SITEMAP_PATH = path.resolve('sitemap.xml'); // 루트에 생성
+// 레포 루트 기준 경로
+const PAGES_DIR = 'p';           // 루트의 p/ 폴더 (상대 경로 사용)
+const SITEMAP_PATH = 'sitemap.xml';
 
-async function walkHtmlFiles(dir) {
+// p/ 아래 HTML을 "레포 루트 기준 상대 경로"로 수집
+async function walkHtmlFiles(relDir) {
   const out = [];
   let entries = [];
   try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
+    entries = await fs.readdir(relDir, { withFileTypes: true });
   } catch {
-    return out; // 폴더가 없을 수도 있음
+    return out; // 폴더 없으면 빈 배열
   }
   for (const it of entries) {
-    const p = path.join(dir, it.name);
+    const nextRel = path.join(relDir, it.name); // 항상 상대 경로 유지
     if (it.isDirectory()) {
-      const nested = await walkHtmlFiles(p);
+      const nested = await walkHtmlFiles(nextRel);
       out.push(...nested);
     } else if (it.isFile() && it.name.toLowerCase().endsWith('.html')) {
-      out.push(p);
+      out.push(nextRel);
     }
   }
   return out;
 }
 
-function gitLastCommitIso(filePath) {
+// 파일의 마지막 커밋 시간을 ISO로
+function gitLastCommitIso(relPath) {
   try {
-    const iso = execSync(`git log -1 --pretty=format:%cI -- "${filePath}"`, { encoding: 'utf8' }).trim();
+    const iso = execSync(`git log -1 --pretty=format:%cI -- "${relPath}"`, { encoding: 'utf8' }).trim();
     if (iso) return iso;
   } catch {}
   return new Date().toISOString();
 }
 
-function toPublicUrl(filePath) {
-  // 파일 경로를 퍼블릭 URL로 변환 (프로젝트 페이지는 /{repo}/ 접두사 필요)
-  const unix = filePath.split(path.sep).join('/'); // OS 구분자 통일
+// 상대 경로 → 퍼블릭 URL
+function toPublicUrl(relPath) {
+  const unix = relPath.split(path.sep).join('/'); // "p/xxx.html"
+  // 최종: https://.../yourshop/p/xxx.html
   return `${BASE}${PUBLIC_PREFIX}/${unix}`;
 }
 
@@ -53,7 +57,7 @@ function xmlEscape(s) {
 }
 
 async function main() {
-  // 허브 URL(컬렉션 페이지)
+  // 허브(/yourshop/) 먼저
   const hub = {
     loc: `${BASE}${PUBLIC_PREFIX}/`,
     lastmod: new Date().toISOString(),
@@ -61,17 +65,15 @@ async function main() {
     priority: '1.0',
   };
 
-  // p/ 밑의 html 수집
-  const files = await walkHtmlFiles(PAGES_DIR);
-
-  const urls = files.map(fp => ({
-    loc: toPublicUrl(fp),
-    lastmod: gitLastCommitIso(fp),
+  const files = await walkHtmlFiles(PAGES_DIR); // 상대 경로 리스트
+  const urls = files.map((rel) => ({
+    loc: toPublicUrl(rel),
+    lastmod: gitLastCommitIso(rel),
     changefreq: 'daily',
     priority: '0.8',
   }));
 
-  // 최신순 정렬(선택)
+  // 최신순(선택)
   urls.sort((a, b) => (a.lastmod < b.lastmod ? 1 : -1));
 
   const nodes = [
@@ -81,12 +83,14 @@ async function main() {
   <changefreq>${hub.changefreq}</changefreq>
   <priority>${hub.priority}</priority>
 </url>`,
-    ...urls.map(u => `<url>
+    ...urls.map(
+      (u) => `<url>
   <loc>${xmlEscape(u.loc)}</loc>
   <lastmod>${u.lastmod}</lastmod>
   <changefreq>${u.changefreq}</changefreq>
   <priority>${u.priority}</priority>
-</url>`),
+</url>`
+    ),
   ].join('\n');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -99,7 +103,7 @@ ${nodes}
   console.log(`Generated sitemap.xml with ${urls.length + 1} URLs (including hub)`);
 }
 
-main().catch(e => {
+main().catch((e) => {
   console.error(e);
   process.exit(1);
 });

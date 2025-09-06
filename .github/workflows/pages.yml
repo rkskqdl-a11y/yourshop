@@ -21,16 +21,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 필요 시 빌드 단계가 있으면 여기에 추가 (예: npm ci && npm run build)
+      # (선택) 빌드 단계가 필요하면 여기 추가
+      # - name: Build
+      #   run: |
+      #     npm ci
+      #     npm run build
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      # sitemap_index.xml 존재 여부를 먼저 확인(없으면 실패로 바로 알려줌)
+      - name: Verify sitemap_index.xml exists
+        run: |
+          if [ ! -f "sitemap_index.xml" ]; then
+            echo "sitemap_index.xml not found at repo root"
+            exit 1
+          fi
+
+      # 업로드 직전, 실제 포함 파일을 로그로 확인(디버그용)
+      - name: List files before upload
+        run: |
+          pwd
+          ls -la .
+          echo "---- find sitemap_index.xml ----"
+          find . -maxdepth 3 -name "sitemap_index.xml" -print
+
+      # 레포 루트 전체를 배포(= sitemap_index.xml 포함)
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .   # 레포 루트 전체를 배포 → sitemap_index.xml 포함
-          # retention-days: 7  # 선택
+          path: .  # 레포 루트 전체 업로드
 
   deploy:
     environment:

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>YourShop 새 콘텐츠</title>
+    <link>https://rkskqdl-a11y.github.io/yourshop/</link>
+    <description>최근 업데이트 목록</description>
+
+    <!-- 최신 글부터 5~10개 정도만 유지 권장 -->
+    <item>
+      <title>8987203887</title>
+      <link>https://rkskqdl-a11y.github.io/yourshop/p/8987203887.html</link>
+      <guid>https://rkskqdl-a11y.github.io/yourshop/p/8987203887.html</guid>
+      <pubDate>Sat, 06 Sep 2025 10:15:00 +0000</pubDate>
+    </item>
+    <item>
+      <title>8948640432</title>
+      <link>https://rkskqdl-a11y.github.io/yourshop/p/8948640432.html</link>
+      <guid>https://rkskqdl-a11y.github.io/yourshop/p/8948640432.html</guid>
+      <pubDate>Sat, 06 Sep 2025 10:10:00 +0000</pubDate>
+    </item>
+
+  </channel>
+</rss>

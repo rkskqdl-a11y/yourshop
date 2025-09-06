@@ -21,7 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # (선택) 빌드 단계가 필요하면 여기 추가
+      # (선택) 빌드 단계가 필요하면 여기에 추가
       # - name: Build
       #   run: |
       #     npm ci
@@ -30,27 +30,46 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      # sitemap_index.xml 존재 여부를 먼저 확인(없으면 실패로 바로 알려줌)
+      # 1) sitemap_index.xml이 레포 루트에 실제 존재하는지 확인(없으면 즉시 실패)
       - name: Verify sitemap_index.xml exists
+        shell: bash
         run: |
           if [ ! -f "sitemap_index.xml" ]; then
             echo "sitemap_index.xml not found at repo root"
             exit 1
+          else
+            echo "OK: sitemap_index.xml found"
           fi
 
-      # 업로드 직전, 실제 포함 파일을 로그로 확인(디버그용)
+      # 2) 업로드 직전 파일 목록/경로를 로그로 출력(디버그용)
       - name: List files before upload
+        shell: bash
         run: |
+          echo "PWD:"
           pwd
+          echo "Root listing:"
           ls -la .
-          echo "---- find sitemap_index.xml ----"
+          echo "Find sitemap_index.xml:"
           find . -maxdepth 3 -name "sitemap_index.xml" -print
 
-      # 레포 루트 전체를 배포(= sitemap_index.xml 포함)
+      # 3) (호환) 만약 빌드 산출물 폴더(dist)가 존재한다면 거기에도 복사해서 포함
+      #    dist 폴더를 쓰지 않는 레포라면 문제 없이 그냥 통과됨
+      - name: Include sitemap_index.xml into dist if exists
+        shell: bash
+        run: |
+          if [ -d "dist" ]; then
+            cp -f sitemap_index.xml dist/ || true
+            echo "Copied sitemap_index.xml into dist/"
+            ls -la dist | grep sitemap_index.xml || true
+          else
+            echo "No dist/ folder. Skipping copy."
+          fi
+
+      # 4) 레포 루트 전체를 업로드(프로젝트 페이지 정적 배포)
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .  # 레포 루트 전체 업로드
+          path: .  # 레포 루트 전체 업로드 → sitemap_index.xml 포함
 
   deploy:
     environment:

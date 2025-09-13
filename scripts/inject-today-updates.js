@@ -1,6 +1,10 @@
 /**
  * scripts/inject-today-updates.js
- * scripts/out/today-updates.html 내용을 홈( yourshop/index.html 또는 index.md )에 주입
+ * today-updates.html 조각을 홈에 주입
+ * 우선순위:
+ * 1) yourshop/index.html
+ * 2) yourshop/index.md
+ * 3) 루트/index.html
  */
 const fs = require('fs');
 const path = require('path');
@@ -9,21 +13,18 @@ const ROOT = process.cwd();
 const BASE_DIR = path.join(ROOT, 'yourshop');
 const OUT_SNIPPET = path.join(ROOT, 'scripts', 'out', 'today-updates.html');
 
-const HTML_HOME = path.join(BASE_DIR, 'index.html');
-const MD_HOME = path.join(BASE_DIR, 'index.md');
+const CANDIDATES = [  path.join(BASE_DIR, 'index.html'),  path.join(BASE_DIR, 'index.md'),  path.join(ROOT, 'index.html'),];
 
 function readSnippet() {
   if (!fs.existsSync(OUT_SNIPPET)) {
-    console.error('today-updates.html이 없습니다. 먼저 build-today-updates.js가 생성해야 합니다.');
-    process.exit(0);
+    console.error('today-updates.html이 없습니다. 먼저 build-today-updates.js를 실행하세요.');
+    process.exit(1);
   }
   return fs.readFileSync(OUT_SNIPPET, 'utf8');
 }
 
 function injectToHtml(filePath, snippet) {
   let html = fs.readFileSync(filePath, 'utf8');
-
-  // 기존 섹션 있으면 교체, 없으면 본문 시작부에 삽입
   if (html.includes('<section id="today-updates"')) {
     html = html.replace(
       /<section id="today-updates"[\s\S]*?<\/section>/,
@@ -36,17 +37,14 @@ function injectToHtml(filePath, snippet) {
   } else if (html.includes('<body>')) {
     html = html.replace('<body>', '<body>\n' + snippet + '\n');
   } else {
-    // 최후의 수단: 문서 맨 앞에 붙이기
     html = snippet + '\n' + html;
   }
-
   fs.writeFileSync(filePath, html, 'utf8');
-  console.log('홈(HTML)에 today-updates 섹션 반영:', filePath);
+  console.log('홈(HTML)에 today-updates 섹션 반영:', path.relative(ROOT, filePath));
 }
 
 function injectToMarkdown(filePath, snippet) {
   let md = fs.readFileSync(filePath, 'utf8');
-
   if (md.includes('<section id="today-updates"')) {
     md = md.replace(
       /<section id="today-updates"[\s\S]*?<\/section>/,
@@ -66,25 +64,25 @@ function injectToMarkdown(filePath, snippet) {
       md = snippet + '\n\n' + md;
     }
   }
-
   fs.writeFileSync(filePath, md, 'utf8');
-  console.log('홈(Markdown)에 today-updates 섹션 반영:', filePath);
+  console.log('홈(Markdown)에 today-updates 섹션 반영:', path.relative(ROOT, filePath));
 }
 
 function main() {
   const snippet = readSnippet();
+  const existing = CANDIDATES.filter(p => fs.existsSync(p));
 
-  if (fs.existsSync(HTML_HOME)) {
-    injectToHtml(HTML_HOME, snippet);
-    return;
-  }
-  if (fs.existsSync(MD_HOME)) {
-    injectToMarkdown(MD_HOME, snippet);
-    return;
+  if (existing.length === 0) {
+    console.error('yourshop/index.html, yourshop/index.md, 루트/index.html 중 어떤 것도 찾지 못했습니다.');
+    process.exit(1);
   }
 
-  console.error('yourshop/index.html 또는 yourshop/index.md를 찾을 수 없어요.');
-  process.exit(0);
+  const target = existing[0];
+  if (target.endsWith('.md')) {
+    injectToMarkdown(target, snippet);
+  } else {
+    injectToHtml(target, snippet);
+  }
 }
 
 main();

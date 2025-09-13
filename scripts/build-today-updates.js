@@ -1,21 +1,44 @@
 /**
  * scripts/build-today-updates.js
- * 루트/yourshop/p 폴더에서 최신 5개 HTML을 골라 today-updates.html 생성
- * - 로그 포함(디버깅용)
+ * 최신 5개 HTML을 찾아 today-updates.html 조각을 생성
+ * - 기본 경로: 루트/yourshop/p
+ * - 안전판: yourshop/p 없으면 루트/p, 루트/site/yourshop/p 순서로 탐색
+ * - 디버그 로그 포함
  */
 
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = process.cwd();
-// 저장소 루트를 BASE로 두고, 실제 글 폴더는 루트/yourshop/p
-const POSTS_DIR = path.join(ROOT, 'yourshop', 'p');
+
+// 후보 경로들을 순서대로 검사해서 실제 존재하는 경로를 선택
+const candidates = [
+  path.join(ROOT, 'yourshop', 'p'),
+  path.join(ROOT, 'p'),
+  path.join(ROOT, 'site', 'yourshop', 'p'),
+];
+
+let POSTS_DIR = null;
+for (const c of candidates) {
+  if (fs.existsSync(c)) {
+    POSTS_DIR = c;
+    break;
+  }
+}
+
+// 디버그 로그
+console.log('[debug] ROOT=', ROOT);
+console.log('[debug] candidates=', candidates);
+console.log('[debug] resolved POSTS_DIR=', POSTS_DIR);
+
+if (!POSTS_DIR) {
+  console.error('[error] 글 폴더(p)를 찾지 못했습니다. 아래 경로들을 확인해 주세요:');
+  for (const c of candidates) console.error(' - ' + c);
+  process.exit(1);
+}
+
 const OUT_DIR = path.join(ROOT, 'scripts', 'out');
 const OUT_FILE = path.join(OUT_DIR, 'today-updates.html');
-
-console.log('[debug] ROOT=', ROOT);
-console.log('[debug] POSTS_DIR abs=', POSTS_DIR);
-console.log('[debug] POSTS_DIR exists=', fs.existsSync(POSTS_DIR));
 
 function getFilesSortedByMtime(absDir, ext = '.html') {
   if (!fs.existsSync(absDir)) return [];
@@ -36,7 +59,7 @@ function extractTitle(htmlPath) {
     // 1) <title> 우선
     let m = html.match(/<title>([^<]+)<\/title>/i);
     if (m && m[1]) return sanitize(m[1]);
-    // 2) h1 대체
+    // 2) <h1> 대체
     m = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
     if (m && m[1]) return sanitize(m[1]);
   } catch (e) {
@@ -50,11 +73,12 @@ function sanitize(text) {
     .replace(/\s+/g, ' ')
     .replace(/[\r\n\t]/g, ' ')
     .trim()
-    .slice(0, 80); // 너무 길면 잘라줌
+    .slice(0, 80);
 }
 
 function buildSection(latest) {
   const items = latest.map(({ name, title }) => {
+    // 기본 URL은 /yourshop/p/파일명 으로 구성
     const url = `/yourshop/p/${name}`;
     const text = title || name.replace(/\.html$/i, '');
     return `    <li><a href="${url}">${text}</a></li>`;
@@ -71,20 +95,10 @@ function buildSection(latest) {
 }
 
 function main() {
-  const absPosts = path.join(BASE_DIR, POSTS_DIR);
-
-  if (!fs.existsSync(absPosts)) {
-    console.error('yourshop/p 폴더가 없어요. 실제 경로를 확인해 주세요:', absPosts);
-    process.exit(0);
-  }
-
-  const files = getFilesSortedByMtime(absPosts).slice(0, 5);
+  const files = getFilesSortedByMtime(POSTS_DIR).slice(0, 5);
   console.log('[debug] picked files=', files.map(f => f.name));
 
-  if (files.length === 0) {
-    // 비어 있어도 섹션은 만들어 둔다(빈 리스트)
-    console.warn('[warn] yourshop/p 안에 .html 파일을 찾지 못했어요.');
-  }
+  if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
 
   const withTitles = files.map(f => ({
     ...f,
@@ -92,8 +106,6 @@ function main() {
   }));
 
   const html = buildSection(withTitles);
-
-  if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(OUT_FILE, html, 'utf8');
   console.log('generated:', OUT_FILE);
 }

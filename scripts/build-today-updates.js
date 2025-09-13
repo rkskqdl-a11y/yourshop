@@ -9,14 +9,13 @@ const path = require('path');
 
 const ROOT = process.cwd();
 // 저장소 루트를 BASE로 두고, 실제 글 폴더는 루트/yourshop/p
-const BASE_DIR = ROOT;
-const POSTS_DIR = path.join('yourshop', 'p');  // 상대 경로로 처리
+const POSTS_DIR = path.join(ROOT, 'yourshop', 'p');
 const OUT_DIR = path.join(ROOT, 'scripts', 'out');
 const OUT_FILE = path.join(OUT_DIR, 'today-updates.html');
 
 console.log('[debug] ROOT=', ROOT);
-console.log('[debug] POSTS_DIR abs=', path.join(ROOT, POSTS_DIR));
-console.log('[debug] POSTS_DIR exists=', fs.existsSync(path.join(ROOT, POSTS_DIR)));
+console.log('[debug] POSTS_DIR abs=', POSTS_DIR);
+console.log('[debug] POSTS_DIR exists=', fs.existsSync(POSTS_DIR));
 
 function getFilesSortedByMtime(absDir, ext = '.html') {
   if (!fs.existsSync(absDir)) return [];

@@ -79,53 +79,19 @@ function sanitize(text) {
 function buildSection(latest) {
   const items = latest.map(({ name, title }) => {
     const url = `/yourshop/p/${name}`;
-    const text = (title || name.replace(/\.html$/i, '')).replace(/\s+/g,' ').trim();
-    return [
-      '    <li class="tu-item">',
-      `      <a class="tu-link" href="${url}" aria-label="${text} 열기">`,
-      '        <span class="tu-bullet" aria-hidden="true"></span>',
-      '        <span class="tu-main">',
-      `          <span class="tu-title">${text}</span>`,
-      '          <span class="tu-meta">방금 업데이트 · 추천</span>',
-      '        </span>',
-      '        <span class="tu-arrow" aria-hidden="true">↗</span>',
-      '      </a>',
-      '    </li>'
-    ].join('\n');
+    const text = title || name.replace(/\.html$/i, '');
+    return `    <li><a href="${url}">${text}</a></li>`;
   }).join('\n');
 
   return [
-    '<section id="today-updates" class="today-updates" style="margin:24px 0;">',
-    '  <div class="tu-head">',
-    '    <h2>오늘 업데이트</h2>',
-    '    <a class="tu-more" href="/yourshop/p/" aria-label="최근 업데이트 더 보기">최근 30개 보기</a>',
-    '  </div>',
-    '  <ul class="tu-list">',
+    '<section id="today-updates" style="margin:24px 0;">',
+    '  <h2 style="font-size:1.25rem; margin-bottom:12px;">오늘 업데이트</h2>',
+    '  <ul>',
     items,
     '  </ul>',
-    '  <style>',
-    '    .today-updates{--fg:#e6f1ff;--fg-dim:#a9b4c8;--accent:#4da3ff;--hover:#7fc1ff;--line:#2b3240;--bgchip:#1f2630;}',
-    '    .today-updates .tu-head{display:flex;align-items:center;justify-content:space-between;margin:0 0 12px;}',
-    '    .today-updates h2{font-size:1.1rem;margin:0;color:var(--fg);}',
-    '    .today-updates .tu-more{font-size:.8rem;color:var(--fg-dim);text-decoration:none;border:1px solid var(--line);padding:3px 8px;border-radius:999px;background:var(--bgchip);} ',
-    '    .today-updates .tu-more:hover{color:var(--hover);border-color:var(--hover);} ',
-    '    .today-updates .tu-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}',
-    '    .today-updates .tu-item{border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,0.02);} ',
-    '    .today-updates .tu-link{display:flex;align-items:center;gap:10px;padding:10px 12px;text-decoration:none;color:var(--fg);} ',
-    '    .today-updates .tu-bullet{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(77,163,255,.12);} ',
-    '    .today-updates .tu-main{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;}',
-    '    .today-updates .tu-title{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;white-space:normal;}',
-    '    .today-updates .tu-meta{font-size:.78rem;color:var(--fg-dim);} ',
-    '    .today-updates .tu-arrow{color:var(--fg-dim);transition:transform .15s ease,color .15s ease;}',
-    '    .today-updates .tu-link:hover .tu-arrow{transform:translateY(-1px) translateX(2px);color:var(--hover);} ',
-    '    .today-updates .tu-link:hover .tu-title{color:var(--hover);} ',
-    '    .today-updates .tu-item:focus-within{outline:2px solid var(--accent);outline-offset:2px;border-radius:10px;}',
-    '    @media (max-width:480px){.today-updates .tu-meta{display:none;}}',
-    '  </style>',
-    '</section>'
+    '</section>',
   ].join('\n');
 }
-
 function main() {
   const files = getFilesSortedByMtime(POSTS_DIR).slice(0, 5);
   console.log('[debug] picked files=', files.map(f => f.name));

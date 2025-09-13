@@ -11,6 +11,9 @@ const POSTS_DIR = path.join(BASE_DIR, 'p');
 const OUT_DIR = path.join(ROOT, 'scripts', 'out');
 const OUT_FILE = path.join(OUT_DIR, 'today-updates.html');
 
+console.log('[debug] ROOT=', ROOT);
+console.log('[debug] POSTS_DIR exists=', fs.existsSync(POSTS_DIR), POSTS_DIR);
+
 function getFilesSortedByMtime(dir, ext = '.html') {
   if (!fs.existsSync(dir)) return [];
   const files = fs.readdirSync(dir)
@@ -56,6 +59,7 @@ function main() {
     process.exit(0);
   }
   const files = getFilesSortedByMtime(POSTS_DIR).slice(0, 5);
+  console.log('[debug] picked files=', files.map(f => f.name));
   const withTitles = files.map(f => ({
     ...f,
     title: extractTitle(f.full),

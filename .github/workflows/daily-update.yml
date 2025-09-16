@@ -1,53 +1,72 @@
-  - name: Setup Node
-    uses: actions/setup-node@v4
-    with:
-      node-version: '20'
+name: Daily Yourshop Updates
 
-  - name: Install deps (optional)
-    run: |
-      if [ -f package.json ]; then
-        npm ci
-      fi
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 매일 KST 09:00 (UTC 00:00)
+  workflow_dispatch: {}
 
-  - name: Generate Today Updates HTML
-    run: |
-      node scripts/build-today-updates.js
+permissions:
+  contents: write
 
-  - name: Inject Today Updates into homepage
-    run: |
-      node scripts/inject-today-updates.js
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-  - name: Configure git
-    run: |
-      git config user.name "github-actions"
-      git config user.email "actions@users.noreply.github.com"
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-  - name: Stage changes
-    run: |
-      git add -A
-      if git diff --cached --quiet; then
-        echo "NO_CHANGES=true" >> $GITHUB_ENV
-        echo "No changes to commit."
-      else
-        echo "NO_CHANGES=false" >> $GITHUB_ENV
-      fi
+      - name: Install deps (optional)
+        run: |
+          if [ -f package.json ]; then
+            npm ci
+          fi
 
-  - name: Merge remote main
-    if: env.NO_CHANGES == 'false'
-    run: |
-      git fetch origin main
-      git merge --ff-only origin/main || git merge --no-edit origin/main
+      - name: Generate Today Updates HTML
+        run: |
+          node scripts/build-today-updates.js
 
-  - name: Commit and push
-    if: env.NO_CHANGES == 'false'
-    run: |
-      git commit -m "chore: update today-updates section (automated)" || echo "Already committed"
-      git push origin HEAD:main
+      - name: Inject Today Updates into homepage
+        run: |
+          node scripts/inject-today-updates.js
 
-  - name: Ping search engines
-    run: |
-      BASE='https://rkskqdl-a11y.github.io/yourshop'
-      SITEMAP="$BASE/sitemap.xml"
-      curl -s "https://www.google.com/ping?sitemap=$SITEMAP" || true
-      curl -s "https://www.bing.com/ping?sitemap=$SITEMAP" || true
-      curl -s "$BASE/" > /dev/null || true
+      - name: Configure git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+
+      - name: Stage changes
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "NO_CHANGES=true" >> $GITHUB_ENV
+            echo "No changes to commit."
+          else
+            echo "NO_CHANGES=false" >> $GITHUB_ENV
+          fi
+
+      - name: Merge remote main
+        if: env.NO_CHANGES == 'false'
+        run: |
+          git fetch origin main
+          git merge --ff-only origin/main || git merge --no-edit origin/main
+
+      - name: Commit and push
+        if: env.NO_CHANGES == 'false'
+        run: |
+          git commit -m "chore: update today-updates section (automated)" || echo "Already committed"
+          git push origin HEAD:main
+
+      - name: Ping search engines
+        run: |
+          BASE='https://rkskqdl-a11y.github.io/yourshop'
+          SITEMAP="$BASE/sitemap.xml"
+          curl -s "https://www.google.com/ping?sitemap=$SITEMAP" || true
+          curl -s "https://www.bing.com/ping?sitemap=$SITEMAP" || true
+          curl -s "$BASE/" > /dev/null || true

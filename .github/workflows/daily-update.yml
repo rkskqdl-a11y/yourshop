@@ -1,58 +1,53 @@
-name: Daily Yourshop Updates
+  - name: Setup Node
+    uses: actions/setup-node@v4
+    with:
+      node-version: '20'
 
-on:
-  schedule:
-    - cron: '0 0 * * *'  # 매일 KST 09:00 (UTC 00:00)
-  workflow_dispatch: {}   # 필요할 때 수동 실행도 가능
+  - name: Install deps (optional)
+    run: |
+      if [ -f package.json ]; then
+        npm ci
+      fi
 
-permissions:
-  contents: write
+  - name: Generate Today Updates HTML
+    run: |
+      node scripts/build-today-updates.js
 
-jobs:
-  daily:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  - name: Inject Today Updates into homepage
+    run: |
+      node scripts/inject-today-updates.js
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+  - name: Configure git
+    run: |
+      git config user.name "github-actions"
+      git config user.email "actions@users.noreply.github.com"
 
-      # scripts 폴더에 스크립트가 있다고 가정. 다음 단계에서 만들어줄 거야.
-      - name: Install deps (optional)
-        run: |
-          if [ -f package.json ]; then
-            npm ci
-          fi
+  - name: Stage changes
+    run: |
+      git add -A
+      if git diff --cached --quiet; then
+        echo "NO_CHANGES=true" >> $GITHUB_ENV
+        echo "No changes to commit."
+      else
+        echo "NO_CHANGES=false" >> $GITHUB_ENV
+      fi
 
-      - name: Generate Today Updates HTML
-        run: |
-          node scripts/build-today-updates.js
+  - name: Merge remote main
+    if: env.NO_CHANGES == 'false'
+    run: |
+      git fetch origin main
+      git merge --ff-only origin/main || git merge --no-edit origin/main
 
-      - name: Inject Today Updates into homepage
-        run: |
-          node scripts/inject-today-updates.js
+  - name: Commit and push
+    if: env.NO_CHANGES == 'false'
+    run: |
+      git commit -m "chore: update today-updates section (automated)" || echo "Already committed"
+      git push origin HEAD:main
 
-      - name: Commit changes
-        run: |
-          git config user.name 'github-actions'
-          git config user.email 'actions@users.noreply.github.com'
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m 'chore: update today-updates section (automated)'
-            git push
-          else
-            echo "No changes to commit."
-          fi
-
-      - name: Ping search engines
-        run: |
-          BASE='https://rkskqdl-a11y.github.io/yourshop'
-          SITEMAP="$BASE/sitemap.xml"
-          # Google/Bing 핑
-          curl -s "https://www.google.com/ping?sitemap=$SITEMAP" || true
-          curl -s "https://www.bing.com/ping?sitemap=$SITEMAP" || true
-          # Naver는 공식 핑 엔드포인트가 없어 홈페이지를 직접 히트
-          curl -s "$BASE/" > /dev/null || true
+  - name: Ping search engines
+    run: |
+      BASE='https://rkskqdl-a11y.github.io/yourshop'
+      SITEMAP="$BASE/sitemap.xml"
+      curl -s "https://www.google.com/ping?sitemap=$SITEMAP" || true
+      curl -s "https://www.bing.com/ping?sitemap=$SITEMAP" || true
+      curl -s "$BASE/" > /dev/null || true

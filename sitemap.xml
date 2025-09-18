@@ -1,17 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-<url>
-  <loc>https://rkskqdl-a11y.github.io/yourshop/</loc>
-  <lastmod>2025-09-18T13:25:46.899Z</lastmod>
-  <changefreq>hourly</changefreq>
-  <priority>1.0</priority>
-</url>
-<url>
-  <loc>https://rkskqdl-a11y.github.io/yourshop/p/9058060854.html</loc>
-  <lastmod>2025-09-17T12:21:15Z</lastmod>
-  <changefreq>daily</changefreq>
-  <priority>0.8</priority>
-</url>
+<urlset xmlns="https://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://rkskqdl-a11y.github.io/yourshop/</loc>
+    <lastmod>2025-09-18T13:25:46.899Z</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <url>
+    <loc>https://rkskqdl-a11y.github.io/yourshop/p/9058060854.html</loc>
+    <lastmod>2025-09-17T12:21:15Z</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://rkskqdl-a11y.github.io/yourshop/p/2206907998.html</loc>
+    <lastmod>2025-09-18T13:25:46Z</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
 <url>
   <loc>https://rkskqdl-a11y.github.io/yourshop/p/8957681645.html</loc>
   <lastmod>2025-09-17T12:21:15Z</lastmod>

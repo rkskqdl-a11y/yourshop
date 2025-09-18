@@ -1,72 +1,99 @@
-name: Daily Yourshop Updates
+steps:
+  - name: Checkout
+    uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
 
-on:
-  schedule:
-    - cron: '0 0 * * *'  # 매일 KST 09:00 (UTC 00:00)
-  workflow_dispatch: {}
+  # 1) Node 단계: Today Updates 생성/주입
+  - name: Setup Node
+    uses: actions/setup-node@v4
+    with:
+      node-version: '20'
 
-permissions:
-  contents: write
+  - name: Install deps (optional)
+    run: |
+      if [ -f package.json ]; then
+        npm ci
+      fi
 
-jobs:
-  daily:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+  - name: Generate Today Updates HTML
+    run: |
+      if [ -f scripts/build-today-updates.js ]; then
+        node scripts/build-today-updates.js
+      else
+        echo "no build-today-updates.js, skip"
+      fi
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+  - name: Inject Today Updates into homepage
+    run: |
+      if [ -f scripts/inject-today-updates.js ]; then
+        node scripts/inject-today-updates.js
+      else
+        echo "no inject-today-updates.js, skip"
+      fi
 
-      - name: Install deps (optional)
-        run: |
-          if [ -f package.json ]; then
-            npm ci
-          fi
+  # 2) Python 단계: 상품 페이지 자동 생성(p/*.md)
+  - name: Setup Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: '3.11'
 
-      - name: Generate Today Updates HTML
-        run: |
-          node scripts/build-today-updates.js
+  - name: Install Python deps
+    run: |
+      python -m pip install --upgrade pip
+      # 필요 시 크롤링/파싱용 패키지들
+      pip install requests beautifulsoup4 lxml pyyaml
 
-      - name: Inject Today Updates into homepage
-        run: |
-          node scripts/inject-today-updates.js
+  - name: Build data/products.json (optional fetch)
+    run: |
+      if [ -f scripts/fetch_products_seo.py ]; then
+        python scripts/fetch_products_seo.py
+      else
+        echo "no fetch_products_seo.py, use existing data/products.json"
+      fi
 
-      - name: Configure git
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@users.noreply.github.com"
+  - name: Generate product pages (p/*.md)
+    run: |
+      if [ -f scripts/generate_pages.py ] && [ -f data/products.json ]; then
+        python scripts/generate_pages.py data/products.json
+      else
+        echo "generate_pages.py or data/products.json not found, skip"
+      fi
 
-      - name: Stage changes
-        run: |
-          git add -A
-          if git diff --cached --quiet; then
-            echo "NO_CHANGES=true" >> $GITHUB_ENV
-            echo "No changes to commit."
-          else
-            echo "NO_CHANGES=false" >> $GITHUB_ENV
-          fi
+  # 3) Git 커밋/푸시 (변경 있을 때만)
+  - name: Configure git
+    run: |
+      git config user.name "github-actions"
+      git config user.email "actions@users.noreply.github.com"
 
-      - name: Merge remote main
-        if: env.NO_CHANGES == 'false'
-        run: |
-          git fetch origin main
-          git merge --ff-only origin/main || git merge --no-edit origin/main
+  - name: Stage changes
+    id: stage
+    run: |
+      git add -A
+      if git diff --cached --quiet; then
+        echo "no_changes=true" >> $GITHUB_OUTPUT
+        echo "No changes to commit."
+      else
+        echo "no_changes=false" >> $GITHUB_OUTPUT
+      fi
 
-      - name: Commit and push
-        if: env.NO_CHANGES == 'false'
-        run: |
-          git commit -m "chore: update today-updates section (automated)" || echo "Already committed"
-          git push origin HEAD:main
+  - name: Merge remote main
+    if: steps.stage.outputs.no_changes == 'false'
+    run: |
+      git fetch origin main
+      git merge --ff-only origin/main || git merge --no-edit origin/main
 
-      - name: Ping search engines
-        run: |
-          BASE='https://rkskqdl-a11y.github.io/yourshop'
-          SITEMAP="$BASE/sitemap.xml"
-          curl -s "https://www.google.com/ping?sitemap=$SITEMAP" || true
-          curl -s "https://www.bing.com/ping?sitemap=$SITEMAP" || true
-          curl -s "$BASE/" > /dev/null || true
+  - name: Commit and push
+    if: steps.stage.outputs.no_changes == 'false'
+    run: |
+      git commit -m "chore: daily updates (today-updates + product pages)" || echo "Already committed"
+      git push origin HEAD:main
+
+  # 4) 검색 엔진 핑
+  - name: Ping search engines
+    run: |
+      BASE='https://rkskqdl-a11y.github.io/yourshop'
+      SITEMAP="$BASE/sitemap.xml"
+      curl -s "https://www.google.com/ping?sitemap=$SITEMAP" || true
+      curl -s "https://www.bing.com/ping?sitemap=$SITEMAP" || true
+      curl -s "$BASE/" > /dev/null || true

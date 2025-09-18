@@ -10,13 +10,9 @@
   {
     "@context": "https://schema.org",
     "@type": "Product",
-    "name": {{ page.title | jsonify }},
-    {% if page.image_url %}
-    "image": [{{ page.image_url | jsonify }}],
-    {% endif %}
-    {% if page.description %}
-    "description": {{ page.description | strip_newlines | jsonify }},
-    {% endif %}
+    "name": {{ page.title | jsonify }}{% if page.image_url %},
+    "image": [{{ page.image_url | jsonify }}]{% endif %}{% if page.description %},
+    "description": {{ page.description | strip_newlines | jsonify }}{% endif %},
     "brand": {
       "@type": "Brand",
       "name": {{ page.brand | default: '쿠팡' | jsonify }}
@@ -25,8 +21,8 @@
     "offers": {
       "@type": "Offer",
       "url": {{ page.url | absolute_url | jsonify }},
-      "priceCurrency": "KRW",
-      "price": {{ page.price_number | jsonify }},
+      "priceCurrency": "KRW"{% if page.price_number %},
+      "price": {{ page.price_number | jsonify }}{% endif %},
       "priceValidUntil": "2026-12-31",
       "availability": "https://schema.org/InStock",
       "itemCondition": "https://schema.org/NewCondition"

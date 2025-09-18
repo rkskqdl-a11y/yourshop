@@ -10,43 +10,56 @@
   {
     "@context": "https://schema.org",
     "@type": "Product",
-    "name": "{{ page.title | escape }}",
-    "image": ["{{ page.image_url | escape }}"],
-    "description": "{{ page.description | strip_newlines | escape }}",
-    "brand": { "@type": "Brand", "name": "{{ page.brand | default: '쿠팡' | escape }}" },
-    "sku": "{{ page.sku | default: page.product_id | escape }}",
+    "name": {{ page.title | jsonify }},
+    {% if page.image_url %}
+    "image": [{{ page.image_url | jsonify }}],
+    {% endif %}
+    {% if page.description %}
+    "description": {{ page.description | strip_newlines | jsonify }},
+    {% endif %}
+    "brand": {
+      "@type": "Brand",
+      "name": {{ page.brand | default: '쿠팡' | jsonify }}
+    },
+    "sku": {{ page.sku | default: page.product_id | jsonify }},
     "offers": {
       "@type": "Offer",
-      "url": "{{ page.url | absolute_url }}",
+      "url": {{ page.url | absolute_url | jsonify }},
       "priceCurrency": "KRW",
-      "price": "{{ page.price_number }}",
+      "price": {{ page.price_number | jsonify }},
       "priceValidUntil": "2026-12-31",
       "availability": "https://schema.org/InStock",
       "itemCondition": "https://schema.org/NewCondition"
-    }
-    {% if page.rating_value and page.review_count %}
-    , "aggregateRating": {
+    }{% if page.rating_value and page.review_count %},
+    "aggregateRating": {
       "@type": "AggregateRating",
-      "ratingValue": "{{ page.rating_value }}",
-      "reviewCount": "{{ page.review_count }}"
-    }
-    {% endif %}
+      "ratingValue": {{ page.rating_value | jsonify }},
+      "reviewCount": {{ page.review_count | jsonify }}
+    }{% endif %}
   }
   </script>
 
   <link rel="canonical" href="{{ page.url | absolute_url }}"/>
+  {% if page.description %}
   <meta name="description" content="{{ page.description | strip_newlines | escape }}"/>
+  {% endif %}
+
+  <!-- 디버그 확인용 (원하면 지워도 됨) -->
+  <meta name="x-debug" content="product-layout-loaded"/>
 </head>
 <body>
   <main>
     <article>
       <h1>{{ page.title }}</h1>
+
       {% if page.image_url %}
       <img src="{{ page.image_url }}" alt="{{ page.title }}"/>
       {% endif %}
+
       {% if page.description %}
       <p>{{ page.description }}</p>
       {% endif %}
+
       {{ content }}
     </article>
   </main>

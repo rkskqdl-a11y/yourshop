@@ -2,9 +2,15 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <url>
   <loc>https://rkskqdl-a11y.github.io/yourshop/</loc>
-  <lastmod>2025-09-18T11:13:35.145Z</lastmod>
+  <lastmod>2025-09-18T11:40:06.723Z</lastmod>
   <changefreq>hourly</changefreq>
   <priority>1.0</priority>
+</url>
+<url>
+  <loc>https://rkskqdl-a11y.github.io/yourshop/p/2206907998.html</loc>
+  <lastmod>2025-09-18T20:39:58+09:00</lastmod>
+  <changefreq>daily</changefreq>
+  <priority>0.8</priority>
 </url>
 <url>
   <loc>https://rkskqdl-a11y.github.io/yourshop/p/9058060854.html</loc>
@@ -152,12 +158,6 @@
 </url>
 <url>
   <loc>https://rkskqdl-a11y.github.io/yourshop/p/226828904.html</loc>
-  <lastmod>2025-09-17T12:21:15Z</lastmod>
-  <changefreq>daily</changefreq>
-  <priority>0.8</priority>
-</url>
-<url>
-  <loc>https://rkskqdl-a11y.github.io/yourshop/p/2206907998.html</loc>
   <lastmod>2025-09-17T12:21:15Z</lastmod>
   <changefreq>daily</changefreq>
   <priority>0.8</priority>

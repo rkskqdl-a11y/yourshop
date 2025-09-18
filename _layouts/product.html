@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>{{ page.title | escape }}</title>
+
+  <!-- Product JSON-LD for Rich Results -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "{{ page.title | escape }}",
+    "image": ["{{ page.image_url | escape }}"],
+    "description": "{{ page.description | strip_newlines | escape }}",
+    "brand": { "@type": "Brand", "name": "{{ page.brand | default: '쿠팡' | escape }}" },
+    "sku": "{{ page.sku | default: page.product_id | escape }}",
+    "offers": {
+      "@type": "Offer",
+      "url": "{{ page.url | absolute_url }}",
+      "priceCurrency": "KRW",
+      "price": "{{ page.price_number }}",
+      "priceValidUntil": "2026-12-31",
+      "availability": "https://schema.org/InStock",
+      "itemCondition": "https://schema.org/NewCondition"
+    }
+    {% if page.rating_value and page.review_count %}
+    , "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "{{ page.rating_value }}",
+      "reviewCount": "{{ page.review_count }}"
+    }
+    {% endif %}
+  }
+  </script>
+
+  <link rel="canonical" href="{{ page.url | absolute_url }}"/>
+  <meta name="description" content="{{ page.description | strip_newlines | escape }}"/>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>{{ page.title }}</h1>
+      {% if page.image_url %}
+      <img src="{{ page.image_url }}" alt="{{ page.title }}"/>
+      {% endif %}
+      {% if page.description %}
+      <p>{{ page.description }}</p>
+      {% endif %}
+      {{ content }}
+    </article>
+  </main>
+</body>
+</html>

@@ -24,10 +24,15 @@ jobs:
         with:
           node-version: '20'
 
+      # 패키지 설치: package-lock.json이 있으면 npm ci, 없으면 npm i, 아예 없으면 스킵
       - name: Install deps
         run: |
-          if [ -f package.json ]; then
+          if [ -f package-lock.json ]; then
             npm ci
+          elif [ -f package.json ]; then
+            npm i
+          else
+            echo "no package.json -> skip install"
           fi
 
       # Today Updates (있으면 실행, 없으면 스킵)
@@ -51,12 +56,17 @@ jobs:
       - name: Generate product pages (Node)
         run: |
           if [ -f data/products.json ] && [ -f scripts/generate-pages.js ]; then
-            npm run gen:pages
+            if [ -f package.json ]; then
+              npm run gen:pages
+            else
+              # package.json이 없어도 Node 단독 실행으로 지원
+              node scripts/generate-pages.js
+            fi
           else
             echo "missing data/products.json or scripts/generate-pages.js, skip"
           fi
 
-      # 커밋/푸시
+      # Git 커밋/푸시 (변경 있을 때만)
       - name: Configure git
         run: |
           git config user.name "github-actions"

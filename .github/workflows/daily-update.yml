@@ -73,30 +73,32 @@ jobs:
             echo "no build-sitemaps.js, skip"
           fi
 
-      # 인덱스 없다고 실패하지 않게: 찾고/복사하고/재생성 시도
-      - name: Ensure sitemap_index.xml exists (no fail)
-        run: |
-          set -e
-          echo "[fix] check sitemap_index.xml"
-          if [ ! -f "sitemap_index.xml" ]; then
-            echo "[fix] not at root. searching common dirs..."
-            for p in ./ ./public ./dist ./build ./out ./_site; do
-              if [ -f "$p/sitemap_index.xml" ]; then
-                cp -f "$p/sitemap_index.xml" ./sitemap_index.xml
-                echo "[fix] copied from $p"
-                break
-              fi
-            done
-          fi
-          if [ ! -f "sitemap_index.xml" ]; then
-            echo "[fix] still missing. regenerating..."
-            if [ -f scripts/build-sitemaps.js ]; then
-              node scripts/build-sitemaps.js || true
-            fi
-          fi
-          if [ ! -f "sitemap_index.xml" ]; then
-            echo "::warning ::sitemap_index.xml still missing, continuing without failing."
-          fi
+      - name: Ensure index-sitemap.xml exists (no fail)
+  run: |
+    set -e
+    echo "[fix] check index-sitemap.xml"
+    # 루트에 없으면, 흔한 출력 경로에서 찾아 복사
+    if [ ! -f "index-sitemap.xml" ]; then
+      echo "[fix] not at root. searching output dirs..."
+      for p in ./ ./public ./dist ./build ./out ./_site; do
+        if [ -f "$p/index-sitemap.xml" ]; then
+          cp -f "$p/index-sitemap.xml" ./index-sitemap.xml
+          echo "[fix] copied from $p"
+          break
+        fi
+      done
+    fi
+    # 그래도 없으면 재생성 시도(절대 실패시키지 않음)
+    if [ ! -f "index-sitemap.xml" ]; then
+      echo "[fix] still missing. regenerating..."
+      if [ -f scripts/build-sitemaps.js ]; then
+        node scripts/build-sitemaps.js || true
+      fi
+    fi
+    # 최종적으로 없더라도 워크플로우 중단 금지
+    if [ ! -f "index-sitemap.xml" ]; then
+      echo "::warning ::index-sitemap.xml still missing, continuing without failing."
+    fi
 
       # 루트 강제 배치 + .nojekyll 보장 + 빌드 스탬프 + 커밋/푸시
       - name: Force-place sitemaps at repo root and commit

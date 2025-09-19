@@ -59,24 +59,24 @@ jobs:
             if [ -f package.json ]; then
               npm run gen:pages
             else
-              # package.json이 없어도 Node 단독 실행으로 지원
               node scripts/generate-pages.js
             fi
           else
             echo "missing data/products.json or scripts/generate-pages.js, skip"
           fi
 
-- name: Generate sitemaps (index + chunks)
-  run: |
-    if [ -f scripts/build-sitemaps.js ]; then
-      if [ -f package.json ]; then
-        npm run gen:sitemaps
-      else
-        node scripts/build-sitemaps.js
-      fi
-    else
-      echo "no build-sitemaps.js, skip"
-    fi
+      # Sitemaps 생성 (index + chunks)
+      - name: Generate sitemaps (index + chunks)
+        run: |
+          if [ -f scripts/build-sitemaps.js ]; then
+            if [ -f package.json ]; then
+              npm run gen:sitemaps
+            else
+              node scripts/build-sitemaps.js
+            fi
+          else
+            echo "no build-sitemaps.js, skip"
+          fi
 
       # Git 커밋/푸시 (변경 있을 때만)
       - name: Configure git
@@ -104,14 +104,14 @@ jobs:
       - name: Commit and push
         if: steps.stage.outputs.no_changes == 'false'
         run: |
-          git commit -m "chore: daily updates (today + product pages via Node)" || echo "Already committed"
+          git commit -m "chore: daily updates (today + product pages via Node + sitemaps)" || echo "Already committed"
           git push origin HEAD:main
 
-      # 검색엔진 핑
+      # 검색엔진 핑(인덱스 기준)
       - name: Ping search engines
         run: |
           BASE='https://rkskqdl-a11y.github.io/yourshop'
-          SITEMAP="$BASE/sitemap.xml"
-          curl -s "https://www.google.com/ping?sitemap=$SITEMAP" || true
-          curl -s "https://www.bing.com/ping?sitemap=$SITEMAP" || true
+          SITEMAP_INDEX="$BASE/sitemap_index.xml"
+          curl -s "https://www.google.com/ping?sitemap=$SITEMAP_INDEX" || true
+          curl -s "https://www.bing.com/ping?sitemap=$SITEMAP_INDEX" || true
           curl -s "$BASE/" > /dev/null || true

@@ -73,6 +73,7 @@ jobs:
             echo "no build-sitemaps.js, skip"
           fi
 
+      # 인덱스 없다고 실패하지 않게: 찾고/복사하고/재생성 시도
       - name: Ensure sitemap_index.xml exists (no fail)
         run: |
           set -e
@@ -97,17 +98,20 @@ jobs:
             echo "::warning ::sitemap_index.xml still missing, continuing without failing."
           fi
 
+      # 루트 강제 배치 + .nojekyll 보장 + 빌드 스탬프 + 커밋/푸시
       - name: Force-place sitemaps at repo root and commit
         run: |
           set -e
-
+          # 여러 아웃풋 디렉터리 커버해서 루트로 복사
           for p in ./ ./public ./dist ./build ./out ./_site; do
             [ -f "$p/sitemap.xml" ] && cp -f "$p/sitemap.xml" ./sitemap.xml || true
             [ -f "$p/sitemap_index.xml" ] && cp -f "$p/sitemap_index.xml" ./sitemap_index.xml || true
           done
 
+          # .nojekyll 보장
           [ -f ./.nojekyll ] || touch .nojekyll
 
+          # 빌드 타임 주석으로 항상 diff 보장
           stamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           for f in sitemap.xml sitemap_index.xml; do
             [ -f "$f" ] || continue
@@ -119,6 +123,7 @@ jobs:
             fi
           done
 
+          # 커밋/푸시
           git add .nojekyll sitemap.xml sitemap_index.xml || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

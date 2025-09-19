@@ -37,11 +37,14 @@ ${items}
 `;
 }
 function buildIndex(files) {
+  const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   const items = files.map(name => `  <sitemap>
     <loc>${xmlEscape(`${SITE}/${name}`)}</loc>
-    <lastmod>${iso()}</lastmod>
+    <lastmod>${stamp}</lastmod>
   </sitemap>`).join('\n\n');
+
   return `<?xml version="1.0" encoding="UTF-8"?>
+<!-- build: ${stamp} -->
 <sitemapindex xmlns="https://www.sitemaps.org/schemas/sitemap/0.9">
 ${items}
 </sitemapindex>

@@ -102,13 +102,16 @@ jobs:
       - name: Force-place sitemaps at repo root and commit
         run: |
           set -e
+          # 여러 출력 경로에서 루트로 복사
           for p in ./ ./public ./dist ./build ./out ./_site; do
             [ -f "$p/sitemap.xml" ] && cp -f "$p/sitemap.xml" ./sitemap.xml || true
             [ -f "$p/index-sitemap.xml" ] && cp -f "$p/index-sitemap.xml" ./index-sitemap.xml || true
           done
 
+          # .nojekyll 보장
           [ -f ./.nojekyll ] || touch .nojekyll
 
+          # 빌드 타임 주석으로 항상 변경 발생 유도(커밋 보장)
           stamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           for f in sitemap.xml index-sitemap.xml; do
             [ -f "$f" ] || continue

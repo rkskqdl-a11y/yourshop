@@ -66,6 +66,18 @@ jobs:
             echo "missing data/products.json or scripts/generate-pages.js, skip"
           fi
 
+- name: Generate sitemaps (index + chunks)
+  run: |
+    if [ -f scripts/build-sitemaps.js ]; then
+      if [ -f package.json ]; then
+        npm run gen:sitemaps
+      else
+        node scripts/build-sitemaps.js
+      fi
+    else
+      echo "no build-sitemaps.js, skip"
+    fi
+
       # Git 커밋/푸시 (변경 있을 때만)
       - name: Configure git
         run: |

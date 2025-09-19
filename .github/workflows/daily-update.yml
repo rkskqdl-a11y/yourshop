@@ -18,13 +18,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Node 환경 세팅
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 패키지 설치: package-lock.json이 있으면 npm ci, 없으면 npm i, 아예 없으면 스킵
       - name: Install deps
         run: |
           if [ -f package-lock.json ]; then
@@ -35,7 +33,6 @@ jobs:
             echo "no package.json -> skip install"
           fi
 
-      # Today Updates (있으면 실행, 없으면 스킵)
       - name: Build Today Updates (optional)
         run: |
           if [ -f scripts/build-today-updates.js ]; then
@@ -52,7 +49,6 @@ jobs:
             echo "skip today-updates inject"
           fi
 
-      # Product pages 생성 (data/products.json → p/*.md)
       - name: Generate product pages (Node)
         run: |
           if [ -f data/products.json ] && [ -f scripts/generate-pages.js ]; then
@@ -65,7 +61,6 @@ jobs:
             echo "missing data/products.json or scripts/generate-pages.js, skip"
           fi
 
-      # Sitemaps 생성 (index + chunks)
       - name: Generate sitemaps (index + chunks)
         run: |
           if [ -f scripts/build-sitemaps.js ]; then
@@ -78,7 +73,58 @@ jobs:
             echo "no build-sitemaps.js, skip"
           fi
 
-      # Git 커밋/푸시 (변경 있을 때만)
+      - name: Ensure sitemap_index.xml exists (no fail)
+        run: |
+          set -e
+          echo "[fix] check sitemap_index.xml"
+          if [ ! -f "sitemap_index.xml" ]; then
+            echo "[fix] not at root. searching common dirs..."
+            for p in ./ ./public ./dist ./build ./out ./_site; do
+              if [ -f "$p/sitemap_index.xml" ]; then
+                cp -f "$p/sitemap_index.xml" ./sitemap_index.xml
+                echo "[fix] copied from $p"
+                break
+              fi
+            done
+          fi
+          if [ ! -f "sitemap_index.xml" ]; then
+            echo "[fix] still missing. regenerating..."
+            if [ -f scripts/build-sitemaps.js ]; then
+              node scripts/build-sitemaps.js || true
+            fi
+          fi
+          if [ ! -f "sitemap_index.xml" ]; then
+            echo "::warning ::sitemap_index.xml still missing, continuing without failing."
+          fi
+
+      - name: Force-place sitemaps at repo root and commit
+        run: |
+          set -e
+
+          for p in ./ ./public ./dist ./build ./out ./_site; do
+            [ -f "$p/sitemap.xml" ] && cp -f "$p/sitemap.xml" ./sitemap.xml || true
+            [ -f "$p/sitemap_index.xml" ] && cp -f "$p/sitemap_index.xml" ./sitemap_index.xml || true
+          done
+
+          [ -f ./.nojekyll ] || touch .nojekyll
+
+          stamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          for f in sitemap.xml sitemap_index.xml; do
+            [ -f "$f" ] || continue
+            if ! head -n 2 "$f" | grep -q 'build:'; then
+              awk -v s="$stamp" 'NR==1{print; print "<!-- build: " s " -->"; next}1' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+            else
+              sed -i.bak "0,/build:/s//build: $stamp/" "$f" || true
+              rm -f "$f.bak"
+            fi
+          done
+
+          git add .nojekyll sitemap.xml sitemap_index.xml || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --cached --quiet || git commit -m "chore: ensure sitemaps at root (auto)"
+          git push || true
+
       - name: Configure git
         run: |
           git config user.name "github-actions"
@@ -107,7 +153,6 @@ jobs:
           git commit -m "chore: daily updates (today + product pages via Node + sitemaps)" || echo "Already committed"
           git push origin HEAD:main
 
-      # 검색엔진 핑(인덱스 기준)
       - name: Ping search engines
         run: |
           BASE='https://rkskqdl-a11y.github.io/yourshop'

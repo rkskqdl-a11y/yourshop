@@ -2,6 +2,7 @@
   "name": "yourshop",
   "private": true,
   "scripts": {
-    "gen:pages": "node scripts/generate-pages.js"
+    "gen:pages": "node scripts/generate-pages.js",
+    "gen:sitemaps": "node scripts/build-sitemaps.js"
   }
 }

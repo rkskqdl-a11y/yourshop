@@ -73,7 +73,7 @@ jobs:
             echo "no build-sitemaps.js, skip"
           fi
 
-      # 인덱스 파일을 index-sitemap.xml 기준으로 확인 (없어도 실패하지 않음)
+      # 인덱스 파일: index-sitemap.xml 기준. 없다고 실패하지 않음(찾기/복사/재생성).
       - name: Ensure index-sitemap.xml exists (no fail)
         run: |
           set -e
@@ -98,11 +98,11 @@ jobs:
             echo "::warning ::index-sitemap.xml still missing, continuing without failing."
           fi
 
-      # 루트 강제 배치 + .nojekyll 보장 + 빌드 스탬프 + 커밋/푸시
+      # 루트 강제 배치 + .nojekyll 보장 + 빌드 스탬프(diff 보장) + 커밋/푸시
       - name: Force-place sitemaps at repo root and commit
         run: |
           set -e
-          # 여러 아웃풋 디렉터리에서 루트로 강제 복사
+          # 여러 출력 경로에서 루트로 복사
           for p in ./ ./public ./dist ./build ./out ./_site; do
             [ -f "$p/sitemap.xml" ] && cp -f "$p/sitemap.xml" ./sitemap.xml || true
             [ -f "$p/index-sitemap.xml" ] && cp -f "$p/index-sitemap.xml" ./index-sitemap.xml || true
@@ -111,7 +111,7 @@ jobs:
           # .nojekyll 보장
           [ -f ./.nojekyll ] || touch .nojekyll
 
-          # 빌드 타임 주석으로 항상 diff 보장
+          # 빌드 타임 주석으로 항상 변경 발생 유도(커밋 보장)
           stamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           for f in sitemap.xml index-sitemap.xml; do
             [ -f "$f" ] || continue

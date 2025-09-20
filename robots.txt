@@ -1,5 +1,3 @@
 User-agent: *
 Allow: /
 Sitemap: https://rkskqdl-a11y.github.io/yourshop/sitemap.xml
-Sitemap: https://rkskqdl-a11y.github.io/yourshop/sitemap_index.xml
-
